@@ -8,6 +8,7 @@
 // contrast against that.
 
 import { rateAsOf, type RateRow } from "./domain";
+import { roundMoney } from "./format";
 import { getPayRunForWeekEnding, type PayRun } from "./paycalendar";
 import type { TimesheetSummary } from "./repo";
 
@@ -30,9 +31,10 @@ export interface ReportRow {
   rateHeld: number;
   pay: number;
   expenseAccount: string | null; // blank until processed — never a resolver default
+  accountOverridden: boolean; // chosen account differs from the resolver's default, snapshotted on the processed event
   payRun: PayRun;
   approvedByName: string | null;
-  override: boolean;
+  override: boolean; // approval override (approved by payroll instead of the manager)
   status: "approved" | "processed";
   todaysRate?: number;
   recomputedPay?: number;
@@ -55,7 +57,7 @@ export function buildReportRows(
 
     const hours = t.submitted?.totalHours ?? 0;
     const rateHeld = t.approved?.hourly ?? 0;
-    const pay = t.processed ? t.processed.amount : Math.round(hours * rateHeld * 100) / 100;
+    const pay = t.processed ? t.processed.amount : roundMoney(hours * rateHeld);
 
     const row: ReportRow = {
       id: t.id,
@@ -68,6 +70,7 @@ export function buildReportRows(
       rateHeld,
       pay,
       expenseAccount: t.processed ? t.processed.expenseAccount : null,
+      accountOverridden: t.processed ? t.processed.expenseAccount !== t.processed.resolvedAccount : false,
       payRun,
       approvedByName: t.approvedByName,
       override: Boolean(t.approved?.override),
@@ -77,10 +80,10 @@ export function buildReportRows(
     if (recompute) {
       const rates = recompute.ratesByUser.get(t.userId) ?? [];
       const todaysRate = rateAsOf(rates, recompute.todayISO)?.hourly ?? 0;
-      const recomputedPay = Math.round(hours * todaysRate * 100) / 100;
+      const recomputedPay = roundMoney(hours * todaysRate);
       row.todaysRate = todaysRate;
       row.recomputedPay = recomputedPay;
-      row.difference = Math.round((recomputedPay - pay) * 100) / 100;
+      row.difference = roundMoney(recomputedPay - pay);
     }
 
     rows.push(row);

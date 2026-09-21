@@ -3,7 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
 import { fromUTCDate } from "@/lib/dateutil";
 import type { RateRow } from "@/lib/domain";
-import { formatDateLong, formatHours, formatMoney } from "@/lib/format";
+import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
 import { getRecentPayRuns } from "@/lib/paycalendar";
 import { getHourlyUsersForEntity, getRatesForUser, getReportableForEntity, getSodFlags } from "@/lib/repo";
 import { buildReportRows, type ReportStatusFilter } from "@/lib/reports";
@@ -51,9 +51,9 @@ export default async function ReportsPage({
     recomputeOn && ratesByUser ? { todayISO, ratesByUser } : undefined,
   );
 
-  const totalPay = rows.reduce((sum, r) => sum + r.pay, 0);
-  const totalRecomputed = rows.reduce((sum, r) => sum + (r.recomputedPay ?? 0), 0);
-  const totalDifference = Math.round((totalRecomputed - totalPay) * 100) / 100;
+  const totalPay = roundMoney(rows.reduce((sum, r) => sum + r.pay, 0));
+  const totalRecomputed = roundMoney(rows.reduce((sum, r) => sum + (r.recomputedPay ?? 0), 0));
+  const totalDifference = roundMoney(totalRecomputed - totalPay);
 
   const csvQuery = new URLSearchParams({
     from: fromPayday,
@@ -178,7 +178,17 @@ export default async function ReportsPage({
                           </td>
                         </>
                       )}
-                      <td>{r.expenseAccount ?? <span className="muted">not set</span>}</td>
+                      <td>
+                        {r.expenseAccount ?? <span className="muted">not set</span>}
+                        {r.accountOverridden && (
+                          <>
+                            {" "}
+                            <span className="pill warn" title="Differs from the resolver's default">
+                              Override
+                            </span>
+                          </>
+                        )}
+                      </td>
                       <td>{formatDateLong(r.payRun.payday)}</td>
                       <td>
                         {r.approvedByName ?? "—"}

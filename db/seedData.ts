@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ACCOUNTS, resolveExpenseAccount, type AccountRow } from "../lib/accounts";
 import { addDays, fromUTCDate, mostRecentFriday } from "../lib/dateutil";
+import { roundMoney } from "../lib/format";
 import { federalHolidaysForYears } from "../lib/holidays";
 import { getMostRecentPastPayRun, getPayRunForWeekEnding, type PayRun } from "../lib/paycalendar";
 
@@ -693,8 +694,11 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       // processed — amount comes only from the two snapshots already
       // taken: the hours on the submitted event and the rate on the
       // approved event, never recomputed from the live rate table.
-      const expenseAccount = resolveExpenseAccount(stream, u.function);
-      const amount = Math.round(roundedTotal * rate.hourly * 100) / 100;
+      // The seed never overrides the resolver's choice, so expenseAccount
+      // and resolvedAccount are always the same value here — a real admin
+      // session can diverge them via Mark Processed's dropdown.
+      const resolvedAccount = resolveExpenseAccount(stream, u.function);
+      const amount = roundMoney(roundedTotal * rate.hourly);
       const processedAt = maxDT(atTime(payRun.payday, 10, 0), shiftHours(approvedAt, 24));
       events.push({
         id: nextEventId(),
@@ -702,7 +706,12 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         type: "processed",
         actorId: payrollAdminId,
         at: processedAt,
-        payload: { expenseAccount, payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff }, amount },
+        payload: {
+          expenseAccount: resolvedAccount,
+          resolvedAccount,
+          payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },
+          amount,
+        },
       });
     }
 

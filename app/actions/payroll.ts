@@ -2,8 +2,9 @@
 
 import type { PoolClient } from "@neondatabase/serverless";
 import { revalidatePath } from "next/cache";
-import { ACCOUNTS } from "@/lib/accounts";
+import { ACCOUNTS, resolveExpenseAccount } from "@/lib/accounts";
 import { getPool } from "@/lib/db";
+import { roundMoney } from "@/lib/format";
 import { getPayRunForWeekEnding } from "@/lib/paycalendar";
 import { requireUser } from "@/lib/session";
 import { statusFromLatestEventType } from "@/lib/status";
@@ -46,11 +47,16 @@ export async function markProcessedBatchAction(_prev: ProcessState, formData: Fo
       entity_id: string;
       week_ending: string;
       latest_type: string;
+      billable: boolean;
+      default_account: string | null;
+      function: string;
     }>(
       `
-        select t.id, t.entity_id, t.week_ending::text as week_ending,
+        select t.id, t.entity_id, t.week_ending::text as week_ending, s.billable, s.default_account, u.function,
           (select type from events where timesheet_id = t.id order by at desc, id desc limit 1) as latest_type
         from timesheets t
+        join streams s on s.id = t.stream_id
+        join users u on u.id = t.user_id
         where t.id = any($1)
       `,
       [ids],
@@ -61,6 +67,7 @@ export async function markProcessedBatchAction(_prev: ProcessState, formData: Fo
       entityId: Number(r.entity_id),
       weekEnding: r.week_ending,
       latestType: r.latest_type,
+      resolvedAccount: resolveExpenseAccount({ billable: r.billable, defaultAccount: r.default_account }, r.function),
     }));
 
     if (rows.length !== ids.length) {
@@ -79,7 +86,7 @@ export async function markProcessedBatchAction(_prev: ProcessState, formData: Fo
     for (const row of rows) {
       const snapshots = await getSnapshots(client, row.id);
       const payRun = getPayRunForWeekEnding(row.weekEnding);
-      const amount = Math.round(snapshots.totalHours * snapshots.hourly * 100) / 100;
+      const amount = roundMoney(snapshots.totalHours * snapshots.hourly);
       const account = accountByTimesheetId.get(row.id)!;
 
       await client.query("insert into events (timesheet_id, type, actor_id, payload) values ($1, 'processed', $2, $3)", [
@@ -87,6 +94,7 @@ export async function markProcessedBatchAction(_prev: ProcessState, formData: Fo
         me.id,
         JSON.stringify({
           expenseAccount: account,
+          resolvedAccount: row.resolvedAccount,
           payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },
           amount,
           batch,

@@ -60,9 +60,10 @@ export async function GET(request: Request) {
     "Pay",
     ...(recomputeOn ? ["Today's rate", "If recomputed", "Difference"] : []),
     "Expense head",
+    "Account overridden",
     "Pay run",
     "Approved by",
-    "Override",
+    "Approval override",
     "Status",
   ];
   const csvRows: unknown[][] = [header];
@@ -77,6 +78,7 @@ export async function GET(request: Request) {
       r.pay,
       ...(recomputeOn ? [r.todaysRate ?? 0, r.recomputedPay ?? 0, r.difference ?? 0] : []),
       r.expenseAccount ?? "",
+      r.accountOverridden ? "yes" : "",
       r.payRun.payday,
       r.approvedByName ?? "",
       r.override ? "yes" : "",

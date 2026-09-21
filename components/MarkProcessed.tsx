@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { markProcessedBatchAction, type ProcessState } from "@/app/actions/payroll";
 import { ACCOUNTS, accountName } from "@/lib/accounts";
-import { formatDateLong, formatHours, formatMoney } from "@/lib/format";
+import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
 
 export interface ReadyRow {
   id: number;
@@ -53,11 +53,11 @@ export function MarkProcessed({ rows }: { rows: ReadyRow[] }) {
   }
 
   const batchRows = batchIds ? rows.filter((r) => batchIds.includes(r.id)) : [];
-  const grandTotal = batchRows.reduce((sum, r) => sum + r.amount, 0);
+  const grandTotal = roundMoney(batchRows.reduce((sum, r) => sum + r.amount, 0));
   const byAccount = new Map<string, number>();
   for (const r of batchRows) {
     const account = accounts.get(r.id) ?? r.defaultAccount;
-    byAccount.set(account, (byAccount.get(account) ?? 0) + r.amount);
+    byAccount.set(account, roundMoney((byAccount.get(account) ?? 0) + r.amount));
   }
 
   if (rows.length === 0) {
@@ -141,7 +141,7 @@ export function MarkProcessed({ rows }: { rows: ReadyRow[] }) {
                   Selected
                 </td>
                 <td className="r num">
-                  {formatMoney(rows.filter((r) => selected.has(r.id)).reduce((sum, r) => sum + r.amount, 0))}
+                  {formatMoney(roundMoney(rows.filter((r) => selected.has(r.id)).reduce((sum, r) => sum + r.amount, 0)))}
                 </td>
                 <td colSpan={2}></td>
               </tr>

@@ -59,19 +59,25 @@ async function checkProcessedAmounts(): Promise<CheckResult> {
   return { name: "processed amount equals submitted.totalHours x approved.hourly", failures, total: result.rows.length };
 }
 
-// Every processed event's account must match lib/accounts.ts's
-// resolveExpenseAccount — the real function, not a SQL re-implementation.
-async function checkExpenseAccounts(): Promise<CheckResult> {
+// Every processed event snapshots resolvedAccount (what the resolver rule
+// says) alongside expenseAccount (what was actually recorded, which may be
+// a deliberate override). This checks resolvedAccount itself is correct —
+// via lib/accounts.ts's real resolveExpenseAccount, not a SQL
+// re-implementation — for every row, billable and non-billable alike,
+// regardless of whether that row was overridden.
+async function checkResolvedAccounts(): Promise<CheckResult> {
   const pool = getPool();
   const result = await pool.query<{
     id: string;
     billable: boolean;
     default_account: string | null;
     function: string;
-    account: string | null;
+    expense_account: string | null;
+    resolved_account: string | null;
   }>(`
     select t.id, s.billable, s.default_account, u.function,
-      (select payload->>'expenseAccount' from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1) as account
+      (select payload->>'expenseAccount' from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1) as expense_account,
+      (select payload->>'resolvedAccount' from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1) as resolved_account
     from timesheets t
     join streams s on s.id = t.stream_id
     join users u on u.id = t.user_id
@@ -79,27 +85,20 @@ async function checkExpenseAccounts(): Promise<CheckResult> {
   `);
 
   let failures = 0;
+  let overridden = 0;
   for (const row of result.rows) {
-    if (row.account === null) {
+    if (row.expense_account === null || row.resolved_account === null) {
       failures++;
       continue;
     }
-    // A manually-overridden account (chosen in the Mark Processed dropdown
-    // instead of the default) is legitimate and won't match the resolver —
-    // this check only verifies the resolver itself still computes cleanly
-    // and that unmixed billable/non-billable data resolves as expected for
-    // rows where an override is implausible (billable streams always
-    // resolve to their own fixed default, which nothing in this app lets
-    // an admin change independently of the account dropdown itself).
-    if (row.billable) {
-      const expected = resolveExpenseAccount({ billable: true, defaultAccount: row.default_account }, row.function);
-      if (expected !== row.account) failures++;
-    }
+    const expected = resolveExpenseAccount({ billable: row.billable, defaultAccount: row.default_account }, row.function);
+    if (expected !== row.resolved_account) failures++;
+    if (row.expense_account !== row.resolved_account) overridden++;
   }
   return {
-    name: "processed billable-stream accounts match the stream's own default (non-billable rows may be legitimately overridden)",
+    name: `processed resolvedAccount matches resolveExpenseAccount for every row (${overridden} currently overridden)`,
     failures,
-    total: result.rows.filter((r) => r.billable).length,
+    total: result.rows.length,
   };
 }
 
@@ -148,7 +147,7 @@ async function reportSodFlags(): Promise<void> {
 
 async function main() {
   const pool = getPool();
-  const checks = await Promise.all([checkProcessedAmounts(), checkExpenseAccounts(), checkPayRuns()]);
+  const checks = await Promise.all([checkProcessedAmounts(), checkResolvedAccounts(), checkPayRuns()]);
 
   console.log("Payroll verification (each failure count must be 0):");
   for (const c of checks) {

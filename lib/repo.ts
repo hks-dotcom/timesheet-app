@@ -207,7 +207,8 @@ export interface ApprovedPayload {
 }
 
 export interface ProcessedPayload {
-  expenseAccount: string;
+  expenseAccount: string; // the account actually recorded — may be an override
+  resolvedAccount: string; // what the resolver rule would have said, snapshotted for audit
   payRun: { payday: string; due: string; cutoff: string };
   amount: number;
 }
