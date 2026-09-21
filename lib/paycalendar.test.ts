@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getMostRecentPastPayRun, getPayRun, getPayRunForLateSubmission, getPayRunForWeekEnding } from "./paycalendar";
+import { getMostRecentPastPayRun, getPayRun, getPayRunForLateSubmission, getPayRunForWeekEnding, getRecentPayRuns } from "./paycalendar";
 
 interface Case {
   scheduled: string;
@@ -100,4 +100,21 @@ for (const c of lateCases) {
     );
     assert.equal(run.payday, c.runPayday);
   });
+}
+
+test("getRecentPayRuns returns exactly `count` runs, chronological, ending with the one in flight", () => {
+  const runs = getRecentPayRuns("2026-09-21", 6);
+  console.log(`  last 6 as of 2026-09-21 -> ${runs.map((r) => r.payday).join(", ")}`);
+  assert.equal(runs.length, 6);
+  assert.deepEqual(
+    runs.map((r) => r.payday),
+    ["2026-07-15", "2026-07-31", "2026-08-14", "2026-08-31", "2026-09-15", "2026-09-30"],
+  );
+  for (let i = 1; i < runs.length; i++) {
+    assert.ok(compareISOForTest(runs[i - 1].payday, runs[i].payday) < 0, "runs must be in chronological order");
+  }
+});
+
+function compareISOForTest(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }

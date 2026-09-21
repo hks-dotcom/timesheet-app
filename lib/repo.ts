@@ -232,6 +232,7 @@ export interface TimesheetSummary {
   submitted: SubmittedPayload | null;
   approved: ApprovedPayload | null;
   processed: ProcessedPayload | null;
+  approvedByName: string | null;
 }
 
 const TIMESHEET_SELECT = `
@@ -243,7 +244,8 @@ const TIMESHEET_SELECT = `
     ret.payload as "returnedPayload",
     sub.payload as "submittedPayload",
     appr.payload as "approvedPayload",
-    proc.payload as "processedPayload"
+    proc.payload as "processedPayload",
+    apprby.name as "approvedByName"
   from timesheets t
   join users u on u.id = t.user_id
   join streams s on s.id = t.stream_id
@@ -263,6 +265,10 @@ const TIMESHEET_SELECT = `
   left join lateral (
     select payload from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1
   ) proc on true
+  left join lateral (
+    select au.name from events ae join users au on au.id = ae.actor_id
+    where ae.timesheet_id = t.id and ae.type = 'approved' order by ae.at desc, ae.id desc limit 1
+  ) apprby on true
 `;
 
 function mapTimesheetRow(row: Record<string, unknown>): TimesheetSummary {
@@ -288,6 +294,7 @@ function mapTimesheetRow(row: Record<string, unknown>): TimesheetSummary {
     submitted: (row.submittedPayload as SubmittedPayload | null) ?? null,
     approved: (row.approvedPayload as ApprovedPayload | null) ?? null,
     processed: (row.processedPayload as ProcessedPayload | null) ?? null,
+    approvedByName: row.approvedByName === null ? null : String(row.approvedByName),
   };
 }
 

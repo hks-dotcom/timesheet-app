@@ -123,6 +123,23 @@ export function getPayRunForLateSubmission(submittedOnISO: string): PayRun {
   return firstRunWithCutoffOnOrAfter(submittedOnISO);
 }
 
+// The last `count` pay runs whose payday is on or before `today`, plus the
+// one currently in flight (the first whose payday is after `today`), in
+// chronological order — enough to populate a "from/to pay run" picker like
+// Reports'. Not a second pay calendar: iteratePayRuns does the actual
+// derivation, this just windows it.
+export function getRecentPayRuns(today: string, count: number): PayRun[] {
+  const anchor = addDays(today, -800); // safety margin: > count*~15 days for count up to ~52
+  const year = Number(anchor.slice(0, 4));
+  const monthIndex0 = Number(anchor.slice(5, 7)) - 1;
+  const runs: PayRun[] = [];
+  for (const run of iteratePayRuns(year, monthIndex0)) {
+    runs.push(run);
+    if (compareISO(run.payday, today) > 0) break;
+  }
+  return runs.slice(-count);
+}
+
 // The pay run with the most recent payday that is on or before `today`.
 // Paydays are chronological across iteratePayRuns, so the first one whose
 // payday is after `today` means the previous one we saw was the answer.
