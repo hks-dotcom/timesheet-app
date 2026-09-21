@@ -294,12 +294,6 @@ export async function listTimesheetsForUser(userId: number): Promise<TimesheetSu
   return result.rows.map(mapTimesheetRow);
 }
 
-export async function getTimesheetForUserWeek(userId: number, weekEnding: string): Promise<TimesheetSummary | null> {
-  const pool = getPool();
-  const result = await pool.query(`${TIMESHEET_SELECT} where t.user_id = $1 and t.week_ending = $2`, [userId, weekEnding]);
-  return result.rows[0] ? mapTimesheetRow(result.rows[0]) : null;
-}
-
 export async function getTimesheetById(id: number): Promise<TimesheetSummary | null> {
   const pool = getPool();
   const result = await pool.query(`${TIMESHEET_SELECT} where t.id = $1`, [id]);

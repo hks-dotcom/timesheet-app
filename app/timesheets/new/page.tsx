@@ -10,7 +10,7 @@ import {
   getHolidaysByDate,
   getStreamsForEntity,
   getTimeOffByDate,
-  getTimesheetForUserWeek,
+  listTimesheetsForUser,
 } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
 
@@ -27,14 +27,16 @@ export default async function NewTimesheetPage({
 
   const todayISO = fromUTCDate(new Date());
   const anchor = mostRecentFriday(new Date());
-  const recentWeeks = recentWeekEndings(anchor, 4); // newest first
 
-  const rows = await Promise.all(
-    recentWeeks.map(async (we) => {
-      const ts = await getTimesheetForUserWeek(me.id, we);
-      return { weekEnding: we, timesheet: ts, window: windowOf(we, todayISO) };
-    }),
-  );
+  // Their earliest week is the earliest week_ending they have any
+  // timesheet row for — their hire week is implicit in their own data.
+  // Someone with no rows yet just gets the current week to start.
+  const myTimesheets = await listTimesheetsForUser(me.id);
+  const byWeek = new Map(myTimesheets.map((t) => [t.weekEnding, t]));
+  const earliestWeek = myTimesheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
+  const recentWeeks = recentWeekEndings(anchor, earliestWeek); // newest first
+
+  const rows = recentWeeks.map((we) => ({ weekEnding: we, timesheet: byWeek.get(we) ?? null, window: windowOf(we, todayISO) }));
 
   const openDefault = rows.find((r) => !r.timesheet || r.timesheet.status === "draft") ?? rows[0];
   const targetWeek = week && recentWeeks.includes(week) ? week : openDefault.weekEnding;

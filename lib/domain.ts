@@ -87,10 +87,19 @@ export function windowOf(weekEnding: string, todayISO: string): SubmissionWindow
   return { state: "locked", open, lock, run, lateRun: null };
 }
 
-// The recent weeks a contributor might work with: this week and the three
-// before it, newest first.
-export function recentWeekEndings(anchorFriday: string, count = 4): string[] {
-  return Array.from({ length: count }, (_, i) => addDays(anchorFriday, -7 * i));
+// The recent weeks a contributor might work with: this week and up to
+// `count - 1` before it, newest first — but never a week before
+// `earliestWeekEnding` (their earliest recorded week, i.e. their hire week,
+// implicit in their own data). Someone hired more recently than `count`
+// weeks ago gets fewer than `count` rows back.
+export function recentWeekEndings(anchorFriday: string, earliestWeekEnding: string, count = 4): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const we = addDays(anchorFriday, -7 * i);
+    if (we < earliestWeekEnding) continue;
+    out.push(we);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +155,12 @@ export function checkHardBlocks(input: CapCheckInput): CapViolation[] {
 
   return violations;
 }
+
+// A sanity ceiling for a single day's raw input — not anyone's daily cap
+// (checkHardBlocks enforces that, and needs to see over-cap values to
+// reject them, not have them silently clamped away first). This just keeps
+// sanitizeHours from accepting nonsense like "999".
+export const MAX_HOURS_PER_DAY = 24;
 
 // Rounds to the nearest quarter hour and clamps to [0, max].
 export function sanitizeHours(raw: Record<string, unknown>, max: number): Hours {

@@ -7,6 +7,7 @@ import { getPool } from "@/lib/db";
 import { fromUTCDate } from "@/lib/dateutil";
 import {
   DAY_KEYS,
+  MAX_HOURS_PER_DAY,
   blockedDaysFromRows,
   checkHardBlocks,
   describeViolation,
@@ -98,7 +99,7 @@ export async function saveDraftAction(_prev: FormState, formData: FormData): Pro
   const customerIdRaw = formData.get("customerId");
   const customerId = customerIdRaw ? Number(customerIdRaw) : null;
   const notes = String(formData.get("notes") ?? "").slice(0, 2000);
-  const hours = sanitizeHours(readHours(formData), me.dailyCap);
+  const hours = sanitizeHours(readHours(formData), MAX_HOURS_PER_DAY);
 
   if (!weekEnding || !Number.isFinite(streamId)) {
     return { error: "Something is missing from the form. Reload and try again." };
@@ -141,7 +142,7 @@ export async function submitAction(_prev: FormState, formData: FormData): Promis
   const customerIdRaw = formData.get("customerId");
   const customerId = customerIdRaw ? Number(customerIdRaw) : null;
   const notes = String(formData.get("notes") ?? "").slice(0, 2000);
-  const hours = sanitizeHours(readHours(formData), me.dailyCap);
+  const hours = sanitizeHours(readHours(formData), MAX_HOURS_PER_DAY);
   const lateReason = String(formData.get("lateReason") ?? "").trim();
 
   if (!weekEnding || !Number.isFinite(streamId)) {
