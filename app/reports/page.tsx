@@ -5,7 +5,7 @@ import { fromUTCDate } from "@/lib/dateutil";
 import type { RateRow } from "@/lib/domain";
 import { formatDateLong, formatHours, formatMoney } from "@/lib/format";
 import { getRecentPayRuns } from "@/lib/paycalendar";
-import { getHourlyUsersForEntity, getRatesForUser, getReportableForEntity } from "@/lib/repo";
+import { getHourlyUsersForEntity, getRatesForUser, getReportableForEntity, getSodFlags } from "@/lib/repo";
 import { buildReportRows, type ReportStatusFilter } from "@/lib/reports";
 import { requireUser } from "@/lib/session";
 
@@ -32,9 +32,10 @@ export default async function ReportsPage({
   const recomputeOn = recompute === "1";
   const whoId = who && who !== "all" ? Number(who) : null;
 
-  const [people, timesheets] = await Promise.all([
+  const [people, timesheets, sodFlags] = await Promise.all([
     getHourlyUsersForEntity(me.entityId),
     getReportableForEntity(me.entityId, whoId ?? undefined),
+    getSodFlags(me.entityId),
   ]);
 
   let ratesByUser: Map<number, RateRow[]> | undefined;
@@ -221,6 +222,16 @@ export default async function ReportsPage({
         {recomputeOn && rows.length > 0 && Math.abs(totalDifference) < 0.005 && (
           <div className="card-b">
             <div className="note">Both columns agree because no rate changed in this range. Pick a wider range, or a person whose rate changed.</div>
+          </div>
+        )}
+        {sodFlags.length > 0 && (
+          <div className="card-b">
+            <div className="note bad">
+              <b>Segregation check.</b> {sodFlags.length} timesheet{sodFlags.length === 1 ? " was" : "s were"} override-approved and
+              processed by the same person: {sodFlags.map((f) => `${f.userName} · ${formatDateLong(f.weekEnding)}`).join(", ")}. Override
+              approval doesn&apos;t exist as an action yet — this reads the override flag an approved event's payload can already carry,
+              so it's ready as soon as that action is built.
+            </div>
           </div>
         )}
       </div>
