@@ -22,6 +22,9 @@ npm-debug.log*
 # vercel
 .vercel
 
+# local Claude Code dev-server config (launch.json), not part of the app
+.claude/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

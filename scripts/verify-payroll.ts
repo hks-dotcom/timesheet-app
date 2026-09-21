@@ -12,6 +12,7 @@
 
 import { resolveExpenseAccount } from "../lib/accounts";
 import { getPool } from "../lib/db";
+import { roundMoney } from "../lib/format";
 import { getPayRunForWeekEnding } from "../lib/paycalendar";
 import { getSodFlags } from "../lib/repo";
 
@@ -24,10 +25,16 @@ interface CheckResult {
 
 // Every processed event's amount must equal the two snapshots it was
 // built from — the submitted event's totalHours times the approved
-// event's hourly — never anything recomputed from the live rates table
-// (there's no way to check "not read live" directly, but a live read
-// would have to coincidentally match every historical rate for this to
-// still pass, and it doesn't for the recompute-toggle proof anyway).
+// event's hourly, rounded by the app's own roundMoney — never anything
+// recomputed from the live rates table (there's no way to check "not read
+// live" directly, but a live read would have to coincidentally match
+// every historical rate for this to still pass, and it doesn't for the
+// recompute-toggle proof anyway). The comparison is exact, not a
+// tolerance — roundMoney's whole point is that there's no float noise
+// left to tolerate. Also recomputes each one with the OLD
+// Math.round(n*100)/100 method and reports any row where the two methods
+// would have disagreed, so a rounding-method change never silently
+// changes what's already been paid without saying so.
 async function checkProcessedAmounts(): Promise<CheckResult> {
   const pool = getPool();
   const result = await pool.query<{
@@ -45,6 +52,7 @@ async function checkProcessedAmounts(): Promise<CheckResult> {
   `);
 
   let failures = 0;
+  let oldVsNewDisagreements = 0;
   for (const row of result.rows) {
     const totalHours = row.total_hours === null ? null : Number(row.total_hours);
     const hourly = row.hourly === null ? null : Number(row.hourly);
@@ -53,10 +61,22 @@ async function checkProcessedAmounts(): Promise<CheckResult> {
       failures++;
       continue;
     }
-    const expected = Math.round(totalHours * hourly * 100) / 100;
-    if (Math.abs(expected - amount) > 0.005) failures++;
+    const correct = roundMoney(totalHours * hourly);
+    if (correct !== amount) failures++;
+
+    const old = Math.round(totalHours * hourly * 100) / 100;
+    if (old !== correct) {
+      oldVsNewDisagreements++;
+      console.log(
+        `  old-vs-new rounding disagreement, timesheet ${row.id}: ${totalHours}h x $${hourly}/h -> old $${old.toFixed(2)}, new (stored) $${correct.toFixed(2)}`,
+      );
+    }
   }
-  return { name: "processed amount equals submitted.totalHours x approved.hourly", failures, total: result.rows.length };
+  return {
+    name: `processed amount exactly equals roundMoney(totalHours x hourly) (${oldVsNewDisagreements} rows where the old Math.round method would have disagreed)`,
+    failures,
+    total: result.rows.length,
+  };
 }
 
 // Every processed event snapshots resolvedAccount (what the resolver rule
