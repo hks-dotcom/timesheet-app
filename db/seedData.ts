@@ -551,20 +551,43 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       const blocked = workDays.map((d) => holidaySet.has(d) || userTimeOff.has(d));
 
       const rawHours = workDays.map((_, i) => (blocked[i] ? 0 : randFloat(rng, u.dailyCap * 0.6, u.dailyCap)));
-      let total = rawHours.reduce((a, b) => a + b, 0);
-      if (total > u.weeklyCap && total > 0) {
-        const scale = u.weeklyCap / total;
+      const rawTotal = rawHours.reduce((a, b) => a + b, 0);
+      if (rawTotal > u.weeklyCap && rawTotal > 0) {
+        // A nicer starting point, not the enforcement itself: scaling here
+        // operates on unrounded values, so it can still leave individual
+        // days sitting right at the boundary before rounding.
+        const scale = u.weeklyCap / rawTotal;
         for (let i = 0; i < rawHours.length; i++) rawHours[i] *= scale;
-        total = u.weeklyCap;
       }
+
+      // Round each day to the nearest quarter hour, clamped to the daily
+      // cap. Rounding alone can push a day up by as much as 0.125h, and
+      // summed across 5 independently-rounded days that can push the
+      // weekly total back over the cap even when every pre-rounding value
+      // was comfortably under it (this is what produced the 3 snapshotted
+      // caps the live seed's verification query caught — Tara Young's
+      // weekly cap of 24 equals dailyCap(6) * 5 * 0.8 exactly, the average
+      // unrounded total, so she hit this every time rounding rounded up
+      // more days than it rounded down). So after rounding we deterministically
+      // trim any remaining excess back off, 0.25h at a time, from whichever
+      // day currently holds the most hours — the actual enforcement step.
       const hours: Record<string, number> = {};
-      let roundedTotal = 0;
       dayKeys.forEach((k, i) => {
-        const v = Math.round(rawHours[i] * 4) / 4; // nearest quarter hour
-        hours[k] = v;
-        roundedTotal += v;
+        const rounded = Math.round(rawHours[i] * 4) / 4;
+        hours[k] = Math.min(rounded, u.dailyCap);
       });
-      roundedTotal = Math.round(roundedTotal * 100) / 100;
+
+      let roundedTotal = Math.round(dayKeys.reduce((sum, k) => sum + hours[k], 0) * 100) / 100;
+      while (roundedTotal > u.weeklyCap) {
+        let maxKey: (typeof dayKeys)[number] | null = null;
+        for (const k of dayKeys) {
+          if (hours[k] <= 0) continue;
+          if (maxKey === null || hours[k] > hours[maxKey]) maxKey = k;
+        }
+        if (maxKey === null) break; // every day is already at 0; nothing left to trim
+        hours[maxKey] = Math.round((hours[maxKey] - 0.25) * 100) / 100;
+        roundedTotal = Math.round((roundedTotal - 0.25) * 100) / 100;
+      }
 
       // status bucket
       let bucket: "draft" | "submitted" | "approved" | "processed";

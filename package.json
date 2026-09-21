@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "tsx db/migrate.ts",
-    "db:seed": "tsx db/seed.ts",
+    "db:migrate": "tsx --env-file=.env.local db/migrate.ts",
+    "db:seed": "tsx --env-file=.env.local db/seed.ts",
     "test:paycalendar": "tsx --test lib/paycalendar.test.ts"
   },
   "dependencies": {
