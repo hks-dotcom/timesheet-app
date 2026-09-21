@@ -221,6 +221,7 @@ export interface TimesheetSummary {
   streamId: number;
   streamName: string;
   billable: boolean;
+  streamDefaultAccount: string | null;
   customerId: number | null;
   customerName: string | null;
   notes: string | null;
@@ -236,7 +237,7 @@ export interface TimesheetSummary {
 const TIMESHEET_SELECT = `
   select
     t.id, t.user_id as "userId", u.name as "userName", u.function as "userFunction", t.week_ending::text as "weekEnding",
-    t.stream_id as "streamId", s.name as "streamName", s.billable,
+    t.stream_id as "streamId", s.name as "streamName", s.billable, s.default_account as "streamDefaultAccount",
     t.customer_id as "customerId", c.name as "customerName", t.notes, t.draft_hours as "draftHours",
     latest.type as "latestType", latest.at::text as "latestAt",
     ret.payload as "returnedPayload",
@@ -276,6 +277,7 @@ function mapTimesheetRow(row: Record<string, unknown>): TimesheetSummary {
     streamId: Number(row.streamId),
     streamName: String(row.streamName),
     billable: Boolean(row.billable),
+    streamDefaultAccount: row.streamDefaultAccount === null ? null : String(row.streamDefaultAccount),
     customerId: row.customerId === null ? null : Number(row.customerId),
     customerName: row.customerName === null ? null : String(row.customerName),
     notes: row.notes === null ? null : String(row.notes),
@@ -327,6 +329,92 @@ export async function listTimesheetsForManager(managerId: number): Promise<Times
   const pool = getPool();
   const result = await pool.query(`${TIMESHEET_SELECT} where u.manager_id = $1 order by t.week_ending desc`, [managerId]);
   return result.rows.map(mapTimesheetRow);
+}
+
+// Approved timesheets for one entity — Mark Processed's queue. One entity
+// at a time, matching the rule that a processing batch never mixes them.
+export async function getReadyForProcessing(entityId: number): Promise<TimesheetSummary[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `${TIMESHEET_SELECT} where t.entity_id = $1 and latest.type = 'approved' order by t.week_ending asc`,
+    [entityId],
+  );
+  return result.rows.map(mapTimesheetRow);
+}
+
+// Approved or processed timesheets for one entity, optionally for one
+// person — Reports' source rows. Pay-run range and status filtering happen
+// afterward in JS via lib/paycalendar.ts, not here, since the pay calendar
+// has no SQL implementation of its own to filter against.
+export async function getReportableForEntity(entityId: number, userId?: number): Promise<TimesheetSummary[]> {
+  const pool = getPool();
+  const result = userId
+    ? await pool.query(
+        `${TIMESHEET_SELECT} where t.entity_id = $1 and t.user_id = $2 and latest.type in ('approved', 'processed') order by t.week_ending desc`,
+        [entityId, userId],
+      )
+    : await pool.query(
+        `${TIMESHEET_SELECT} where t.entity_id = $1 and latest.type in ('approved', 'processed') order by t.week_ending desc`,
+        [entityId],
+      );
+  return result.rows.map(mapTimesheetRow);
+}
+
+export interface HourlyUserRow {
+  id: number;
+  name: string;
+}
+
+export async function getHourlyUsersForEntity(entityId: number): Promise<HourlyUserRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{ id: string; name: string }>(
+    "select id, name from users where entity_id = $1 and pay_type = 'hourly' order by name",
+    [entityId],
+  );
+  return result.rows.map((r) => ({ id: Number(r.id), name: r.name }));
+}
+
+export interface SodFlag {
+  timesheetId: number;
+  userName: string;
+  weekEnding: string;
+  actorName: string;
+  approvedAt: string;
+}
+
+// Timesheets whose override-approval and processing were done by the same
+// person — the one thing segregation of duties says should never happen.
+// The override-approve action itself doesn't exist in the app yet; this
+// only reads the `override` flag an approved event's payload can carry, so
+// it's ready as soon as that action is built.
+export async function getSodFlags(entityId: number): Promise<SodFlag[]> {
+  const pool = getPool();
+  const result = await pool.query<{ id: string; user_name: string; week_ending: string; actor_name: string; approved_at: string }>(
+    `
+      select t.id, u.name as user_name, t.week_ending::text as week_ending, a.name as actor_name, appr.at::text as approved_at
+      from timesheets t
+      join users u on u.id = t.user_id
+      join lateral (
+        select actor_id, at, payload from events where timesheet_id = t.id and type = 'approved' order by at desc, id desc limit 1
+      ) appr on true
+      join users a on a.id = appr.actor_id
+      join lateral (
+        select actor_id from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1
+      ) proc on true
+      where t.entity_id = $1
+        and (appr.payload->>'override')::boolean is true
+        and appr.actor_id = proc.actor_id
+      order by appr.at desc
+    `,
+    [entityId],
+  );
+  return result.rows.map((r) => ({
+    timesheetId: Number(r.id),
+    userName: r.user_name,
+    weekEnding: r.week_ending,
+    actorName: r.actor_name,
+    approvedAt: r.approved_at,
+  }));
 }
 
 export interface TrailEvent {

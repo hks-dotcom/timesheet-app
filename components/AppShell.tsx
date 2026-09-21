@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { fromUTCDate } from "@/lib/dateutil";
 import { getUpcomingPayRuns } from "@/lib/paycalendar";
-import { getPendingForManager, listTimesheetsForUser, type Role, type SessionUser } from "@/lib/repo";
+import { getPendingForManager, getReadyForProcessing, listTimesheetsForUser, type Role, type SessionUser } from "@/lib/repo";
 import { ActivityTrail } from "./ActivityTrail";
 import { ResetDemoControl } from "./ResetDemoControl";
 import { SwitchButton } from "./SwitchButton";
 
-export type ActiveTab = "dashboard" | "timesheets" | "new" | "queue" | "admin";
+export type ActiveTab = "dashboard" | "timesheets" | "new" | "queue" | "processed" | "reports" | "admin";
 
 const ROLE_LABEL: Record<Role, string> = {
   intern: "Intern",
@@ -23,7 +23,11 @@ function navFor(role: Role): { tab: ActiveTab; href: string; label: string }[] {
     ];
   }
   if (role === "admin") {
-    return [{ tab: "dashboard", href: "/dashboard", label: "Dashboard" }];
+    return [
+      { tab: "dashboard", href: "/dashboard", label: "Dashboard" },
+      { tab: "processed", href: "/processed", label: "Mark processed" },
+      { tab: "reports", href: "/reports", label: "Reports" },
+    ];
   }
   return [
     { tab: "dashboard", href: "/dashboard", label: "Dashboard" },
@@ -35,7 +39,15 @@ function navFor(role: Role): { tab: ActiveTab; href: string; label: string }[] {
 async function railFor(me: SessionUser): Promise<React.ReactNode> {
   const todayISO = fromUTCDate(new Date());
   if (me.role === "admin") {
-    return "The payroll workspace (users, processing, reports) lands in prompt 2. For now, this is a placeholder.";
+    const ready = await getReadyForProcessing(me.entityId);
+    return ready.length ? (
+      <>
+        <b>{ready.length}</b> approved week{ready.length === 1 ? "" : "s"} ready for payroll. Users, the override queue and the
+        tracker land in the next pass.
+      </>
+    ) : (
+      "Nothing waiting to be marked processed. Users, the override queue and the tracker land in the next pass."
+    );
   }
   if (me.role === "manager") {
     const pending = await getPendingForManager(me.id);
