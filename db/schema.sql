@@ -1,0 +1,188 @@
+-- Timesheet App schema.
+--
+-- Standing rules enforced here (see CLAUDE.md for the full list):
+--   1. timesheets has no status column. Status is derived as the type of
+--      the latest event for that timesheet.
+--   2. events is append-only: a trigger raises on UPDATE and on DELETE.
+--   3. Money and limits are snapshotted onto events (payload jsonb), never
+--      recomputed later.
+--   4. rates are effective-dated rows; a rate change is an INSERT.
+--   5. The pay calendar is derived by rule (lib/paycalendar.ts), not stored.
+
+begin;
+
+drop table if exists admin_log cascade;
+drop table if exists chases cascade;
+drop table if exists notifications cascade;
+drop table if exists events cascade;
+drop table if exists timesheets cascade;
+drop table if exists time_off cascade;
+drop table if exists holidays cascade;
+drop table if exists accounts cascade;
+drop table if exists streams cascade;
+drop table if exists customers cascade;
+drop table if exists rates cascade;
+drop table if exists users cascade;
+drop table if exists entities cascade;
+
+create table entities (
+  id          bigint generated always as identity primary key,
+  name        text not null unique,
+  domain      text not null unique
+);
+
+create table users (
+  id          bigint generated always as identity primary key,
+  name        text not null,
+  entity_id   bigint not null references entities (id),
+  role        text not null check (role in ('intern', 'consultant', 'manager', 'admin')),
+  pay_type    text not null check (pay_type in ('hourly', 'salaried')),
+  function    text not null check (function in (
+                'Delivery', 'Solutions & Support', 'Product Engineering',
+                'R&D', 'Sales & Marketing', 'G&A'
+              )),
+  manager_id  bigint references users (id),
+  weekly_cap  numeric(5, 2) not null default 40,
+  daily_cap   numeric(4, 2) not null default 8,
+  active      boolean not null default true
+);
+
+create index users_entity_id_idx on users (entity_id);
+create index users_manager_id_idx on users (manager_id);
+
+create table rates (
+  id              bigint generated always as identity primary key,
+  user_id         bigint not null references users (id),
+  hourly          numeric(8, 2) not null check (hourly > 0),
+  effective_from  date not null,
+  unique (user_id, effective_from)
+);
+
+create index rates_user_id_effective_from_idx on rates (user_id, effective_from);
+
+create table customers (
+  id          bigint generated always as identity primary key,
+  entity_id   bigint not null references entities (id),
+  name        text not null,
+  status      text not null check (status in ('Active', 'Churned')),
+  unique (entity_id, name)
+);
+
+create index customers_entity_id_idx on customers (entity_id);
+
+create table streams (
+  id              bigint generated always as identity primary key,
+  entity_id       bigint not null references entities (id),
+  name            text not null,
+  billable        boolean not null,
+  customer_rule   text not null check (customer_rule in ('required', 'optional', 'none')),
+  default_account text,
+  unique (entity_id, name)
+);
+
+create index streams_entity_id_idx on streams (entity_id);
+
+create table accounts (
+  code  text primary key,
+  name  text not null
+);
+
+-- streams.default_account references accounts, but accounts is created
+-- after streams above for FK ordering; add the constraint now.
+alter table streams
+  add constraint streams_default_account_fkey
+  foreign key (default_account) references accounts (code);
+
+create table holidays (
+  date  date primary key,
+  name  text not null
+);
+
+create table time_off (
+  id      bigint generated always as identity primary key,
+  user_id bigint not null references users (id),
+  date    date not null,
+  label   text not null,
+  unique (user_id, date)
+);
+
+create index time_off_user_id_idx on time_off (user_id);
+
+create table timesheets (
+  id          bigint generated always as identity primary key,
+  user_id     bigint not null references users (id),
+  entity_id   bigint not null references entities (id),
+  week_ending date not null,
+  stream_id   bigint not null references streams (id),
+  customer_id bigint references customers (id),
+  notes       text,
+  unique (user_id, week_ending)
+);
+
+create index timesheets_user_id_idx on timesheets (user_id);
+create index timesheets_entity_id_idx on timesheets (entity_id);
+create index timesheets_week_ending_idx on timesheets (week_ending);
+
+create table events (
+  id           bigint generated always as identity primary key,
+  timesheet_id bigint not null references timesheets (id),
+  type         text not null check (type in (
+                 'created', 'submitted', 'returned', 'approved',
+                 'processed', 'reopened'
+               )),
+  actor_id     bigint not null references users (id),
+  at           timestamptz not null default now(),
+  payload      jsonb not null default '{}'::jsonb
+);
+
+create index events_timesheet_id_at_idx on events (timesheet_id, at);
+
+-- Rule 2: events is append-only.
+create or replace function events_no_update_no_delete()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception 'events is append-only: % is not allowed on events', tg_op;
+end;
+$$;
+
+create trigger events_no_update
+  before update on events
+  for each row execute function events_no_update_no_delete();
+
+create trigger events_no_delete
+  before delete on events
+  for each row execute function events_no_update_no_delete();
+
+create table notifications (
+  id      bigint generated always as identity primary key,
+  user_id bigint not null references users (id),
+  at      timestamptz not null default now(),
+  read_at timestamptz,
+  text    text not null,
+  target  jsonb not null default '{}'::jsonb
+);
+
+create index notifications_user_id_idx on notifications (user_id);
+
+create table chases (
+  id             bigint generated always as identity primary key,
+  at             timestamptz not null default now(),
+  by_user_id     bigint not null references users (id),
+  target_user_id bigint not null references users (id)
+);
+
+create index chases_target_user_id_idx on chases (target_user_id);
+
+create table admin_log (
+  id        bigint generated always as identity primary key,
+  at        timestamptz not null default now(),
+  actor_id  bigint not null references users (id),
+  user_id   bigint not null references users (id),
+  text      text not null
+);
+
+create index admin_log_user_id_idx on admin_log (user_id);
+
+commit;
