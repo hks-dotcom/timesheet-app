@@ -96,19 +96,31 @@ export function getUpcomingPayRuns(fromDate: string, count: number): PayRun[] {
   return runs;
 }
 
-// The pay run that owns the week ending on `friday`: the first pay run
-// (in chronological order) whose cutoff falls on or after that Friday.
-export function getPayRunForWeekEnding(friday: string): PayRun {
-  const anchor = addDays(friday, -35); // safety margin: look a bit earlier
+// The first pay run (chronologically) whose cutoff is on or after `dateISO`.
+function firstRunWithCutoffOnOrAfter(dateISO: string): PayRun {
+  const anchor = addDays(dateISO, -35); // safety margin: look a bit earlier
   const year = Number(anchor.slice(0, 4));
   const monthIndex0 = Number(anchor.slice(5, 7)) - 1;
   for (const run of iteratePayRuns(year, monthIndex0)) {
-    if (compareISO(run.cutoff, friday) >= 0) {
+    if (compareISO(run.cutoff, dateISO) >= 0) {
       return run;
     }
   }
   // unreachable: iteratePayRuns is infinite
   throw new Error("no pay run found");
+}
+
+// The pay run that owns the week ending on `friday`: the first pay run
+// (in chronological order) whose cutoff falls on or after that Friday.
+export function getPayRunForWeekEnding(friday: string): PayRun {
+  return firstRunWithCutoffOnOrAfter(friday);
+}
+
+// A week submitted after its own cutoff is late. It does not belong to the
+// pay run its week ending would normally fall in — it belongs to the first
+// pay run whose cutoff falls on or after the day it was actually submitted.
+export function getPayRunForLateSubmission(submittedOnISO: string): PayRun {
+  return firstRunWithCutoffOnOrAfter(submittedOnISO);
 }
 
 // The pay run with the most recent payday that is on or before `today`.

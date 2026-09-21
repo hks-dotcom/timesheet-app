@@ -28,15 +28,31 @@ component library. Keep dependencies minimal.
    functions, no DB). No scheduled jobs.
 6. **Never print, echo, or commit a connection string. Never read
    `.env.local`.**
+7. **Status comes only from `lib/status.ts`.** No screen or query
+   re-implements the event-type-to-status mapping.
+8. **Every rule is enforced on the server, inside the server action** —
+   `app/actions/*.ts` — not just in the UI. Caps, the submission window,
+   customer rules, and who may approve or return are all re-checked there.
+9. **Timesheet rows (`stream_id`, `customer_id`, `notes`, `draft_hours`)
+   may change only while the timesheet's status is draft.** Enforced in
+   the server actions, not by a trigger.
+10. **`db/schema.sql` is additive and safe to rerun** against a database
+    that already has data — every statement is idempotent, nothing drops
+    or truncates a table.
+11. **The demo reset and the on-request staleness reseed both call
+    `db/seedWrite.ts`'s `writeSeed()` directly — the same function
+    `db/seed.ts` uses, not a copy.**
 
 ## Commands
 
 - `npm run dev` / `npm run build` / `npm run start` — Next.js app.
-- `npm run db:migrate` — applies `db/schema.sql` (truncates and rebuilds
-  the schema; reads `DIRECT_URL`, falling back to `DATABASE_URL`).
+- `npm run db:migrate` — applies `db/schema.sql` (additive; safe to rerun
+  against a populated database; reads `DIRECT_URL`, falling back to
+  `DATABASE_URL`).
 - `npm run db:seed` — rebuilds all seed data deterministically (reads
-  `DIRECT_URL`/`DATABASE_URL`); also prints row counts, the required
-  verification queries, and proof that the append-only trigger works.
+  `DIRECT_URL`/`DATABASE_URL`); also prints row counts, the verification
+  queries, the status-coverage check, and proof that the append-only
+  trigger works.
 - `npm run db:seed -- --dry-run` — builds the same seed data in memory and
   prints a summary without touching any database (no env vars needed).
 - `npm run test:paycalendar` — runs the pay calendar's test cases.
@@ -50,11 +66,32 @@ component library. Keep dependencies minimal.
   The seed loads all of it and never invents a customer.
 - `db/seedData.ts` — pure, deterministic seed data builder (no DB). Assigns
   every row's id and every foreign key as a resolved integer up front, so
-  `db/seed.ts` never has to infer id-to-row linkage from insertion order.
-- `db/seed.ts` — truncates, inserts the built seed data with explicit ids,
-  then verifies it.
-- `lib/paycalendar.ts` — pay calendar rules (pure).
+  nothing downstream has to infer id-to-row linkage from insertion order.
+- `db/seedWrite.ts` — `writeSeed()`: truncates and inserts the built seed
+  data with explicit ids, and upserts `demo_meta`. Shared by `db/seed.ts`
+  and `lib/demo.ts`.
+- `db/seed.ts` — CLI entry point: calls `writeSeed()`, then verifies.
+- `lib/paycalendar.ts` — pay calendar rules (pure), including the late
+  and most-recent-past-run helpers.
 - `lib/holidays.ts` — US federal holidays, derived by rule (pure).
 - `lib/dateutil.ts` — small UTC date-string helpers.
+- `lib/status.ts` — the event-type-to-status mapping (the only one).
+- `lib/domain.ts` — pure business rules: submission window, blocked days,
+  hard-block validation, rate-as-of. No DB access.
 - `lib/db.ts` — lazy Neon `Pool` singleton.
-- `app/page.tsx` — proof page: counts, next pay runs, status breakdown.
+- `lib/repo.ts` — all read queries. Returns raw latest-event types;
+  callers map through `lib/status.ts`, never SQL.
+- `lib/session.ts` — the cookie-based "session" (no sign-in) and
+  `requireUser()`, which every page calls first.
+- `lib/demo.ts` — `ensureFreshDemoData()` (called by every page) and
+  `resetDemo()` (the reset control), serialized through one Postgres
+  advisory lock.
+- `app/actions/*.ts` — server actions: the gate, switch, reset, save
+  draft, submit, return, batch approve. Every hard rule is re-checked here.
+- `app/page.tsx` — the gate (role/entity picker, no sign-in).
+- `app/dashboard`, `app/timesheets`, `app/timesheets/new`, `app/queue` —
+  the app's pages, one per route, all `force-dynamic`.
+- `components/` — `AppShell` (chrome), `ActivityTrail`, `TimesheetForm`,
+  `ApprovalQueue`, and small shared pieces (`StatusMark`, `Kpi`, etc).
+- `docs/mock.html` — the approved design/behaviour spec (not a code
+  reference; its in-memory JS is a prototype).

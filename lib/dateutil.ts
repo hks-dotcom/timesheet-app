@@ -29,6 +29,14 @@ export function isWeekend(iso: string): boolean {
   return dow === 0 || dow === 6;
 }
 
+// The most recent Friday on or before `now` (UTC calendar date). This is
+// the seed's anchor and the reference point for demo staleness checks.
+export function mostRecentFriday(now: Date): string {
+  let iso = fromUTCDate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())));
+  while (dayOfWeek(iso) !== 5) iso = addDays(iso, -1);
+  return iso;
+}
+
 export function compareISO(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }

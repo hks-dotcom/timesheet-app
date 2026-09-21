@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Timesheet to payroll</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#F7F6F3; --surface:#FFFFFF; --sunk:#FBFAF8;
+  --border:#E0DDD6; --border-strong:#D8D4CC;
+  --ink:#14304F; --ink-2:#78756D; --ink-3:#8A877F;
+  --ring:#1A1A17;
+  --ok:#059669; --ok-bg:#E6F4EE;
+  --wait:#F5C518; --wait-bg:#FDF6DA; --pale:#FCEFB4;
+  --danger:#8F1D1D; --danger-bg:#F8E9E5; --danger-br:#EBC0B6;
+  --accent:#14304F; --accent-ink:#FFFFFF;
+  --shadow:0 1px 2px rgba(20,48,79,.05), 0 10px 28px -22px rgba(20,48,79,.45);
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --ground:#12161B; --surface:#1A1F26; --sunk:#161B21;
+  --border:#2A313A; --border-strong:#3A424D;
+  --ink:#DCE5EF; --ink-2:#9AA3AE; --ink-3:#7C8590; --ring:#DCE5EF;
+  --ok:#3F8F6E; --ok-bg:#16241F; --wait:#E8C55C; --wait-bg:#2A2517; --pale:#33301F;
+  --danger:#E08C7A; --danger-bg:#2D1E1B; --danger-br:#5A322A;
+  --accent:#DCE5EF; --accent-ink:#12161B;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -22px rgba(0,0,0,.9);
+}}
+*,*::before,*::after{box-sizing:inherit}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:2px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important}}
+.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+h1,h2,h3{letter-spacing:-.015em;margin:0}
+
+.gate{min-height:100vh;display:grid;place-items:center;padding:24px}
+.gate-card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:28px;box-shadow:var(--shadow)}
+.gate h1{font-size:20px;margin-bottom:4px}
+.gate .sub{color:var(--ink-2);font-size:13.5px;margin:0 0 18px}
+.badge-demo{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);
+  background:var(--sunk);border-radius:999px;padding:4px 11px;font-size:12.5px;color:var(--ink-2);margin-bottom:16px}
+.badge-demo b{color:var(--ink);font-weight:600}
+.gate label{display:block;font-size:12.5px;color:var(--ink-2);margin:14px 0 5px}
+.gate select{width:100%}
+.domain{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);font-size:12.5px;color:var(--ink-3)}
+.domain b{color:var(--ink-2)}
+
+.top{background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:env(safe-area-inset-top,0px);z-index:40}
+.top-in{max-width:1340px;margin:0 auto;padding:10px 18px;display:flex;gap:14px;align-items:center;justify-content:space-between}
+.brand{font-size:13px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.brand span{display:block;font-size:11.5px;font-weight:400;color:var(--ink-3);letter-spacing:0}
+.nav{display:flex;gap:2px;overflow-x:auto;flex:1;min-width:0}
+.nav button{background:none;border:0;border-radius:5px;padding:6px 11px;font-size:13.5px;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.nav button[aria-current="page"]{background:var(--sunk);border:1px solid var(--border);color:var(--ink);font-weight:600}
+.who{display:flex;align-items:center;gap:10px}
+.who .nm{font-size:13px;font-weight:600;text-align:right;line-height:1.25}
+.who .nm span{display:block;font-weight:400;font-size:11.5px;color:var(--ink-3)}
+.bell{position:relative;background:none;border:1px solid var(--border);border-radius:6px;width:34px;height:32px;cursor:pointer;font-size:13px}
+.bell b{position:absolute;top:-6px;right:-6px;background:var(--ink);color:var(--surface);border-radius:999px;
+  font-size:10.5px;min-width:17px;height:17px;display:grid;place-items:center;padding:0 4px;font-weight:600}
+.rail{background:var(--sunk);border-bottom:1px solid var(--border)}
+.rail-in{max-width:1340px;margin:0 auto;padding:8px 18px;font-size:13px;color:var(--ink-2)}
+.rail-in b{color:var(--ink);font-weight:600}
+.shell{max-width:1340px;margin:0 auto;padding:18px;display:grid;gap:18px;grid-template-columns:minmax(0,1fr) 316px;align-items:start}
+@media (max-width:1060px){.shell{grid-template-columns:minmax(0,1fr)}}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:7px;box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+.card-h{padding:13px 16px;border-bottom:1px solid var(--border);display:flex;gap:12px;justify-content:space-between;align-items:baseline;flex-wrap:wrap}
+.card-h h2{font-size:14.5px;font-weight:600}
+.card-h p{margin:2px 0 0;font-size:12.5px;color:var(--ink-2);max-width:74ch}
+.card-b{padding:16px}
+.card-b.flush{padding:0}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+@media (max-width:820px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:13px 14px;box-shadow:var(--shadow);text-align:left;cursor:pointer;width:100%}
+.kpi .v{font-size:26px;font-weight:600;font-family:"IBM Plex Mono",monospace;line-height:1.1}
+.kpi .l{font-size:12.5px;color:var(--ink-2);margin-top:4px;display:flex;align-items:center;gap:6px}
+
+.mk{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;flex:none;
+  font-size:9px;line-height:1;color:var(--ring);border:1px solid var(--ring)}
+.mk-draft{border-style:dashed;background:transparent}
+.mk-submitted{background:linear-gradient(90deg,var(--ring) 50%,transparent 50%)}
+.mk-approved{background:var(--ok);color:#fff}
+.mk-processed{background:var(--ink);color:var(--surface);border-radius:2px}
+.mk-returned{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border-strong);background:var(--sunk);
+  border-radius:999px;padding:1px 9px;font-size:11.5px;color:var(--ink-2)}
+.pill.warn{background:var(--wait-bg);border-color:var(--wait);color:var(--ink)}
+.pill.bad{background:var(--danger-bg);border-color:var(--danger-br);color:var(--danger)}
+.pill.good{background:var(--ok-bg);border-color:var(--ok);color:var(--ink)}
+
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+thead th{text-align:left;font-weight:500;font-size:12px;color:var(--ink-2);padding:9px 12px;
+  border-bottom:1px solid var(--border-strong);white-space:nowrap;background:var(--sunk)}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+tbody tr.clickable{cursor:pointer}
+tbody tr.clickable:hover td{background:var(--sunk)}
+tbody tr.sel td{box-shadow:inset 3px 0 0 var(--ink)}
+tfoot td{padding:9px 12px;border-top:1px solid var(--border-strong);font-weight:600;background:var(--sunk)}
+.muted{color:var(--ink-3)}
+
+.btn{border:1px solid var(--border-strong);background:var(--surface);border-radius:6px;padding:7px 13px;
+  font-size:13.5px;font-weight:500;cursor:pointer}
+.btn:hover:not(:disabled){border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.quiet{border-color:transparent;background:none;color:var(--ink-2);padding-inline:5px;text-decoration:underline;text-underline-offset:2px}
+.btn.quiet:hover{color:var(--ink)}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+select,input[type=text],input[type=number],input[type=date],textarea{
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:6px;padding:7px 9px;font-size:13.5px;max-width:100%}
+textarea{width:100%;min-height:64px;resize:vertical}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field>span{font-size:12px;color:var(--ink-2)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.toggle{display:inline-flex;gap:7px;align-items:center;font-size:13px;color:var(--ink-2);cursor:pointer}
+.note{border:1px solid var(--border);border-left:3px solid var(--ink);background:var(--sunk);
+  border-radius:6px;padding:10px 13px;font-size:13px;color:var(--ink-2);margin:0 0 14px}
+.note b{color:var(--ink);font-weight:600}
+.note.bad{border-color:var(--danger-br);border-left-color:var(--danger);background:var(--danger-bg);color:var(--danger)}
+.note.bad b{color:var(--danger)}
+.empty{padding:26px 16px;text-align:center;color:var(--ink-3);font-size:13.5px}
+
+.wk{display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) 104px;gap:8px}
+@media (max-width:700px){.wk{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.d{border:1px solid var(--border);border-radius:6px;padding:7px 8px;background:var(--surface);min-width:0}
+.d>label{display:block;font-size:11.5px;color:var(--ink-2)}
+.d>label em{font-style:normal;color:var(--ink-3);display:block}
+.d input{width:100%;border:0;padding:0;background:none;font-size:17px;font-weight:500;
+  font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;margin-top:3px}
+.d input::-webkit-outer-spin-button,.d input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.d input[type=number]{-moz-appearance:textfield}
+.d.blocked{background:repeating-linear-gradient(135deg,var(--sunk),var(--sunk) 5px,var(--surface) 5px,var(--surface) 10px);border-style:dashed}
+.d .why{font-size:11px;color:var(--ink-2);margin-top:4px;line-height:1.3}
+.d.tot{background:var(--sunk);border-color:var(--border-strong)}
+.d .val{font-size:17px;font-weight:600;font-family:"IBM Plex Mono",monospace;margin-top:3px}
+.d.over .val{color:var(--danger)}
+
+.side{position:sticky;top:calc(env(safe-area-inset-top,0px) + 62px)}
+@media (max-width:1060px){.side{position:static}}
+.trail{max-height:min(66vh,680px);overflow-y:auto;padding:4px 0 8px}
+@media (max-width:1060px){.trail{max-height:none}}
+.ev{display:grid;grid-template-columns:15px minmax(0,1fr);gap:9px;padding:8px 16px;position:relative}
+.ev::before{content:"";position:absolute;left:23px;top:0;bottom:0;width:1px;background:var(--border)}
+.ev:first-child::before{top:16px}.ev:last-child::before{bottom:calc(100% - 16px)}
+.ev .mk{margin-top:3px;z-index:1;box-shadow:0 0 0 3px var(--surface)}
+.ev-t{font-size:13px;font-weight:600}
+.ev-t span{font-weight:400;color:var(--ink-2)}
+.ev-m{font-size:11.5px;color:var(--ink-3)}
+.ev-p{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.ev-p.q{border-left:2px solid var(--border-strong);padding-left:7px;color:var(--ink)}
+
+.scrim{position:fixed;inset:0;background:rgba(20,48,79,.32);display:grid;place-items:center;padding:20px;z-index:80}
+.modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;width:100%;max-width:540px;
+  box-shadow:0 24px 60px -24px rgba(20,48,79,.5);max-height:86vh;display:flex;flex-direction:column}
+.modal-h{padding:15px 18px;border-bottom:1px solid var(--border)}
+.modal-h h3{font-size:15.5px}
+.modal-b{padding:16px 18px;overflow-y:auto}
+.modal-b p{margin:0 0 10px}
+.modal-f{padding:13px 18px;border-top:1px solid var(--border);display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13.5px;margin:0}
+.kv dt{color:var(--ink-2)}
+.kv dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  background:var(--ink);color:var(--surface);padding:9px 15px;border-radius:6px;font-size:13.5px;z-index:90;max-width:calc(100vw - 32px)}
+.drop{position:absolute;right:0;top:42px;width:320px;background:var(--surface);border:1px solid var(--border-strong);
+  border-radius:8px;box-shadow:var(--shadow);z-index:60;max-height:380px;overflow-y:auto}
+.drop .n{padding:10px 13px;border-bottom:1px solid var(--border);font-size:13px}
+.drop .n:last-child{border-bottom:0}
+.drop button.n{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--border);cursor:pointer;font:inherit;color:inherit}
+.drop button.n:hover{background:var(--sunk)}
+.drop button.n:last-child{border-bottom:0}
+.drop .n.unread{background:var(--sunk)}
+.drop .n small{display:block;color:var(--ink-3);font-size:11.5px;margin-top:2px}
+.whoWrap{position:relative}
+.foot{max-width:1340px;margin:0 auto;padding:4px 18px 36px;font-size:12px;color:var(--ink-3);
+  display:flex;gap:14px;justify-content:space-between;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:999px;overflow:hidden;background:var(--sunk);flex-wrap:wrap}
+.seg button{background:none;border:0;border-right:1px solid var(--border);padding:5px 12px;font-size:12.5px;cursor:pointer;color:var(--ink-2)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:600}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+"use strict";
+/* ── dates ── */
+const DAY=86400000;
+const d0=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const P=s=>{const a=s.split('-').map(Number);return new Date(a[0],a[1]-1,a[2])};
+const add=(d,n)=>new Date(d.getFullYear(),d.getMonth(),d.getDate()+n);
+const fD=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+const fDY=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+const fFull=d=>d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+const fTime=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+', '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+const H=n=>(+n||0).toFixed(2), M=n=>'$'+(+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const TODAY=d0(new Date());
+const ANCHOR=add(TODAY,-((TODAY.getDay()-5+7)%7));
+
+/* ── federal holidays ── */
+function nthDow(y,m,dow,n){const f=new Date(y,m,1);return new Date(y,m,1+((dow-f.getDay()+7)%7)+(n-1)*7)}
+function lastDow(y,m,dow){const l=new Date(y,m+1,0);return add(l,-((l.getDay()-dow+7)%7))}
+const HOLIDAYS={};
+for(let y=TODAY.getFullYear()-3;y<=TODAY.getFullYear()+2;y++){
+  [['New Year\u2019s Day',new Date(y,0,1)],['Martin Luther King Jr. Day',nthDow(y,0,1,3)],
+   ['Presidents\u2019 Day',nthDow(y,1,1,3)],['Memorial Day',lastDow(y,4,1)],['Juneteenth',new Date(y,5,19)],
+   ['Independence Day',new Date(y,6,4)],['Labor Day',nthDow(y,8,1,1)],['Columbus Day',nthDow(y,9,1,2)],
+   ['Veterans Day',new Date(y,10,11)],['Thanksgiving Day',nthDow(y,10,4,4)],['Christmas Day',new Date(y,11,25)]]
+  .forEach(function(h){let o=h[1];if(o.getDay()===6)o=add(o,-1);if(o.getDay()===0)o=add(o,1);HOLIDAYS[iso(o)]=h[0]});
+}
+const isHoliday=d=>HOLIDAYS[iso(d)]||null;
+const isBiz=d=>d.getDay()!==0&&d.getDay()!==6&&!isHoliday(d);
+
+/* ── pay calendar, derived ── */
+function payRun(sched){
+  let pay=sched;while(!isBiz(pay))pay=add(pay,-1);
+  const due=add(pay,-2);
+  let cut=due;while(cut.getDay()!==5)cut=add(cut,-1);
+  const label=sched.getDate()===15?sched.toLocaleDateString('en-US',{month:'short'})+' 1\u201315'
+    :sched.toLocaleDateString('en-US',{month:'short'})+' 16\u2013'+sched.getDate();
+  return{id:'PR-'+iso(sched),label,year:sched.getFullYear(),scheduled:iso(sched),payday:iso(pay),
+    due:iso(due),cutoff:iso(cut),shifted:iso(pay)!==iso(sched)};
+}
+const RUNS=(function(){
+  const out=[];const from=add(ANCHOR,-820),to=add(ANCHOR,130);
+  let y=from.getFullYear(),m=from.getMonth();
+  while(new Date(y,m,1)<=to){out.push(payRun(new Date(y,m,15)));out.push(payRun(new Date(y,m+1,0)));
+    m++;if(m>11){m=0;y++}}
+  return out.sort((a,b)=>a.payday<b.payday?-1:1);
+})();
+const runForWeek=we=>RUNS.find(r=>r.cutoff>=we)||RUNS[RUNS.length-1];
+const nextRun=()=>RUNS.find(r=>r.cutoff>=iso(TODAY))||RUNS[RUNS.length-1];
+
+/* ── reference data, from the FinOS books ── */
+const ENTITIES=[{id:'CT-US',name:'CoreThread',domain:'corethread'},
+                {id:'NC-US',name:'NexCore',domain:'nexcore'}];
+const ACCOUNTS={5000:'COGS \u2014 Delivery Labour',5020:'COGS \u2014 Support',
+  6000:'S&M \u2014 People',6100:'R&D \u2014 People',6200:'G&A \u2014 People'};
+const FUNCTIONS={'Delivery':5000,'Solutions & Support':5020,'Product Engineering':6100,
+  'R&D':6100,'Sales & Marketing':6000,'G&A':6200};
+const STREAMS={
+  'CT-US':[{id:'tm',name:'T&M',bill:true,cust:'required',acct:5000},
+           {id:'sup',name:'Support',bill:true,cust:'required',acct:5020},
+           {id:'ms',name:'Milestone',bill:true,cust:'required',acct:5000},
+           {id:'int',name:'Internal',bill:false,cust:'none',acct:null}],
+  'NC-US':[{id:'radar',name:'RadarIQ',bill:false,cust:'optional',acct:null},
+           {id:'hive',name:'HiveIQ',bill:false,cust:'optional',acct:null},
+           {id:'trace',name:'TraceIQ',bill:false,cust:'optional',acct:null},
+           {id:'aperture',name:'ApertureIQ',bill:false,cust:'optional',acct:null},
+           {id:'int',name:'Internal',bill:false,cust:'none',acct:null}]};
+const CUSTOMERS=[['CT-US','Hollis Group','Active'],['CT-US','Zephyr Industries','Active'],
+ ['CT-US','Eastvale Technologies','Active'],['CT-US','Northwind Holdings','Active'],
+ ['CT-US','Thornton Systems','Active'],['CT-US','Onyx Industries','Active'],
+ ['CT-US','Cerulean Industries','Active'],['CT-US','Wexford Systems','Active'],
+ ['CT-US','Zephyr Holdings','Active'],['CT-US','Pinnacle Systems','Churned'],['CT-US','Merrivale Inc','Churned'],
+ ['NC-US','Checkout Analytics','Active'],['NC-US','Servo Solutions','Active'],['NC-US','Pinion Automation','Active'],
+ ['NC-US','Axiom Automation','Active'],['NC-US','CarePoint Controls','Active'],['NC-US','Bluepeak Corp','Active'],
+ ['NC-US','Sterling Global','Active'],['NC-US','Ashford Holdings','Active'],['NC-US','Dynamo Networks','Churned']]
+ .map(a=>({entity:a[0],name:a[1],status:a[2]}));
+
+function rng(seed){let s=seed>>>0;return function(){s^=s<<13;s>>>=0;s^=s>>17;s^=s<<5;s>>>=0;return s/4294967296}}
+
+/* ── state ── */
+let S,seq,session,ui,EV={};
+const nid=p=>p+(++seq);
+const rateAsOf=(rates,u,on)=>rates.filter(r=>r.user===u&&r.from<=on).sort((a,b)=>a.from<b.from?1:-1)[0]||null;
+const accountFor=(st,fn)=>(st&&st.bill&&st.acct)?st.acct:(FUNCTIONS[fn]||6200);
+
+function seed(){
+  seq=0;const R=rng(20260920);
+  const users=[
+   {id:'u1',name:'Bob Ellis',entity:'CT-US',role:'intern',pay:'hourly',fn:'Delivery',mgr:'u5',weekly:40,daily:null,weeks:11,active:true},
+   {id:'u2',name:'Daniel Scott',entity:'CT-US',role:'consultant',pay:'hourly',fn:'Delivery',mgr:'u5',weekly:40,daily:null,weeks:104,active:true},
+   {id:'u3',name:'Ashley Davis',entity:'CT-US',role:'consultant',pay:'hourly',fn:'Solutions & Support',mgr:'u5',weekly:40,daily:null,weeks:73,active:true},
+   {id:'u4',name:'Tara Young',entity:'CT-US',role:'consultant',pay:'hourly',fn:'Sales & Marketing',mgr:'u5',weekly:24,daily:6,weeks:38,active:true},
+   {id:'u5',name:'Meera Brown',entity:'CT-US',role:'manager',pay:'salaried',fn:'Delivery',mgr:null,weekly:null,daily:null,weeks:104,active:true},
+   {id:'u6',name:'Adam Walker',entity:'CT-US',role:'admin',pay:'salaried',fn:'G&A',mgr:null,weekly:null,daily:null,weeks:104,active:true},
+   {id:'u7',name:'Jason Walker',entity:'NC-US',role:'consultant',pay:'hourly',fn:'Product Engineering',mgr:'u9',weekly:40,daily:null,weeks:104,active:true},
+   {id:'u8',name:'Sunita Green',entity:'NC-US',role:'consultant',pay:'hourly',fn:'Solutions & Support',mgr:'u9',weekly:40,daily:null,weeks:57,active:true},
+   {id:'u9',name:'Ananya Scott',entity:'NC-US',role:'manager',pay:'salaried',fn:'Product Engineering',mgr:null,weekly:null,daily:null,weeks:104,active:true},
+   {id:'u10',name:'Kevin Anderson',entity:'NC-US',role:'admin',pay:'salaried',fn:'G&A',mgr:null,weekly:null,daily:null,weeks:104,active:true},
+   {id:'u11',name:'Nikhil King',entity:'CT-US',role:'consultant',pay:'hourly',fn:'Delivery',mgr:'u5',weekly:40,daily:null,weeks:104,active:false}];
+  const wk=n=>iso(add(ANCHOR,-7*n));
+  const rates=[];const rate=(u,a,n)=>rates.push({id:nid('rt'),user:u,hourly:a,from:wk(n)});
+  rate('u1',22,11);rate('u2',68,104);rate('u2',74,58);rate('u2',79.5,14);
+  rate('u3',60,73);rate('u3',66,26);rate('u4',48,38);rate('u4',52,12);
+  rate('u7',70,104);rate('u7',76,49);rate('u7',82,9);rate('u8',55,57);rate('u8',59.5,18);rate('u11',62,104);
+
+  const timeOff=[];
+  const off=(u,n,days,label)=>{const st=add(ANCHOR,-7*n);for(let i=0;i<days;i++)timeOff.push({user:u,date:iso(add(st,-i)),label})};
+  off('u2',40,3,'Annual leave');off('u2',5,2,'Annual leave');off('u3',19,4,'Annual leave');
+  off('u7',30,3,'Annual leave');off('u4',7,1,'Sick leave');off('u1',3,1,'Sick leave');off('u8',11,2,'Annual leave');
+
+  const timesheets=[],events=[],notifications=[],chases=[],adminLog=[];
+  const ev=(ts,type,actor,at,p)=>events.push({id:nid('e'),ts,type,actor,at,payload:p||{}});
+
+  users.filter(u=>u.pay==='hourly').forEach(u=>{
+    const all=STREAMS[u.entity],bills=all.filter(s=>s.id!=='int');
+    const custs=CUSTOMERS.filter(c=>c.entity===u.entity);
+    for(let n=u.weeks-1;n>=0;n--){
+      const we=add(ANCHOR,-7*n),weS=iso(we);
+      if(n===0&&u.id!=='u1'&&R()<0.55)continue;
+      const stream=R()<0.09?all.find(s=>s.id==='int'):bills[Math.floor(R()*bills.length)];
+      let customer=null;
+      if(stream.cust!=='none'&&(stream.cust==='required'||R()<0.72)){
+        const pool=custs.filter(c=>c.status==='Active'||n>45);
+        customer=pool[Math.floor(R()*pool.length)].name;
+      }
+      const cap=Math.min(u.daily||8,8),hours=[];
+      for(let i=0;i<5;i++){
+        const day=add(we,-(4-i));
+        const blocked=isHoliday(day)||timeOff.some(t=>t.user===u.id&&t.date===iso(day));
+        hours.push(blocked?0:Math.max(0,Math.min(cap,Math.round((cap-R()*1.5)*2)/2)));
+      }
+      let tot=hours.reduce((a,b)=>a+b,0);
+      while(tot>u.weekly){const i=hours.findIndex(h=>h>0);if(i<0)break;hours[i]-=0.5;tot-=0.5}
+      const ts={id:'TS-'+u.id+'-'+weS,user:u.id,we:weS,entity:u.entity,stream:stream.id,customer,notes:''};
+      timesheets.push(ts);
+      ev(ts.id,'created',u.id,new Date(add(we,-4).setHours(9,5)).toISOString(),{});
+      if(n===0)continue;
+      const late=(n===2&&u.id==='u3');
+      const caps={weekly:u.weekly,daily:u.daily||8};
+      ev(ts.id,'submitted',u.id,new Date(add(we,late?6:(R()<0.3?-1:0)).setHours(16,40)).toISOString(),
+        {hours:hours.slice(),total:tot,stream:stream.id,customer,caps,late,
+         lateReason:late?'On a customer site with no laptop access; filed on return.':null});
+      if(n===1&&(u.id==='u1'||u.id==='u4'||u.id==='u7'||u.id==='u8'))continue;
+      if(n===3&&u.id==='u1'){
+        ev(ts.id,'returned',u.mgr,new Date(add(we,3).setHours(9,20)).toISOString(),
+          {reason:'Wednesday is tagged Internal but the standup notes show customer work. Retag and resend.'});
+        ev(ts.id,'submitted',u.id,new Date(add(we,3).setHours(14,10)).toISOString(),
+          {hours:hours.slice(),total:tot,stream:stream.id,customer,caps,late:false,lateReason:null});
+      }
+      const override=(n===6&&u.id==='u7');
+      const rt=rateAsOf(rates,u.id,weS);
+      const apAt=new Date(add(we,override?7:4).setHours(10,15));
+      ev(ts.id,'approved',override?(u.entity==='NC-US'?'u10':'u6'):u.mgr,apAt.toISOString(),
+        {rate:rt?rt.hourly:0,rateFrom:rt?rt.from:null,total:tot,amount:+((rt?rt.hourly:0)*tot).toFixed(2),
+         batch:'BA-'+weS.replace(/-/g,'')+'-'+(u.mgr||'X'),override,
+         comment:override?'Manager on leave and the run closes tomorrow. Approved by payroll.':null});
+      const run=runForWeek(weS);
+      if(n<=2||run.payday>iso(TODAY))continue;
+      const payAt=new Date(P(run.payday).setHours(11,30));
+      const procAt=payAt>apAt?payAt:new Date(add(apAt,1).setHours(11,30));
+      ev(ts.id,'processed',u.entity==='NC-US'?'u10':'u6',procAt.toISOString(),
+        {run:run.id,runLabel:run.label+' \u00b7 '+run.year,account:accountFor(stream,u.fn),
+         amount:+((rt?rt.hourly:0)*tot).toFixed(2),batch:'PB-'+run.id.slice(3).replace(/-/g,'')+'-'+u.entity});
+    }
+  });
+
+  chases.push({id:nid('c'),at:new Date(add(TODAY,-3).setHours(9,0)).toISOString(),by:'u6',target:'u3',kind:'staff'});
+  adminLog.push({id:nid('al'),at:new Date(add(TODAY,-9).setHours(15,20)).toISOString(),actor:'u6',user:'u11',
+    text:'Deactivated \u2014 contract ended. History retained.'});
+  const ovTs=timesheets.find(t=>t.user==='u7'&&events.some(e=>e.ts===t.id&&e.type==='approved'&&e.payload.override));
+  notifications.push({id:nid('n'),user:ovTs?users.find(u=>u.id===ovTs.user).mgr:'u9',at:new Date(add(TODAY,-2).setHours(8,30)).toISOString(),read:false,
+    go:ovTs?{tab:'queue',filter:'approved',sel:ovTs.id}:null,
+    text:'Payroll override-approved a timesheet that was in your queue.'});
+
+  S={users,rates,timeOff,timesheets,events,notifications,chases,adminLog};
+  ui={tab:null,sel:null,filter:'all',page:0,modal:null,bell:false,recompute:false,
+      newWeek:null,picked:{},accts:{},rpt:{from:null,to:null,who:'all',status:'processed'}};
+}
+
+/* ── projections ── */
+const STATUS={created:'draft',submitted:'submitted',returned:'draft',approved:'approved',processed:'processed',reopened:'draft'};
+function rebuild(){EV={};S.events.forEach(e=>{(EV[e.ts]=EV[e.ts]||[]).push(e)});
+  Object.keys(EV).forEach(k=>EV[k].sort((a,b)=>a.at===b.at?(a.id<b.id?-1:1):(a.at<b.at?-1:1)))}
+const evs=id=>EV[id]||[];
+const statusOf=id=>{const a=evs(id);return a.length?STATUS[a[a.length-1].type]:'draft'};
+const lastEv=(id,t)=>{const a=evs(id).filter(e=>e.type===t);return a.length?a[a.length-1]:null};
+const snapOf=id=>['approved','processed'].includes(statusOf(id))?lastEv(id,'approved').payload:null;
+const procOf=id=>statusOf(id)==='processed'?lastEv(id,'processed').payload:null;
+const user=id=>S.users.find(u=>u.id===id)||{name:'\u2014',fn:''};
+const uName=id=>user(id).name;
+const streamOf=ts=>(STREAMS[ts.entity]||[]).find(s=>s.id===ts.stream)||{name:'\u2014',cust:'none'};
+const sheetsOf=u=>S.timesheets.filter(t=>t.user===u).sort((a,b)=>a.we<b.we?1:-1);
+const hoursOf=ts=>{const s=lastEv(ts.id,'submitted');return s?s.payload.hours:(ts.draftHours||[0,0,0,0,0])};
+const totOf=ts=>hoursOf(ts).reduce((a,b)=>a+(+b||0),0);
+function blockedDays(u,we){const out=[];for(let i=0;i<5;i++){const d=add(P(we),-(4-i));
+  const h=isHoliday(d),t=S.timeOff.find(x=>x.user===u&&x.date===iso(d));
+  out.push(h?{why:h,src:'Federal calendar'}:t?{why:t.label,src:'HRIS'}:null)}return out}
+function windowOf(we){const open=add(P(we),-4),lock=add(P(we),14),run=runForWeek(we);
+  if(TODAY<open)return{state:'future',run,lock,open};
+  if(iso(TODAY)<=run.cutoff)return{state:'open',run,lock,open};
+  if(TODAY<=lock)return{state:'late',run:runForWeek(iso(add(P(we),7))),lock,open};
+  return{state:'locked',run,lock,open}}
+function record(ts,type,actor,payload){S.events.push({id:nid('e'),ts,type,actor,at:new Date().toISOString(),payload:payload||{}});rebuild()}
+const notify=(u,text,go)=>S.notifications.push({id:nid('n'),user:u,at:new Date().toISOString(),read:false,text,go:go||null});
+
+/* ── helpers ── */
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $=s=>document.querySelector(s);
+const MK={draft:['mk-draft','','Draft'],submitted:['mk-submitted','','Submitted'],
+  approved:['mk-approved','\u2713','Approved'],processed:['mk-processed','\u25aa','Processed'],
+  returned:['mk-returned','\u21a9','Returned']};
+const mark=(st,l)=>'<span class="st"><span class="mk '+MK[st][0]+'" aria-hidden="true">'+MK[st][1]+'</span>'+esc(l||MK[st][2])+'</span>';
+function statusMark(id){const st=statusOf(id);
+  if(st==='draft'&&lastEv(id,'reopened'))return mark('draft','Reopened');
+  if(st==='draft'&&lastEv(id,'returned'))return mark('returned','Returned to draft');
+  return mark(st)}
+let tt;function toast(m){document.querySelectorAll('.toast').forEach(x=>x.remove());
+  const d=document.createElement('div');d.className='toast';d.setAttribute('role','status');d.textContent=m;
+  document.body.appendChild(d);clearTimeout(tt);tt=setTimeout(()=>d.remove(),4200)}
+function csv(rows,name){const body=rows.map(r=>r.map(c=>{const s=String(c==null?'':c);
+    return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(',')).join('\n');
+  try{const b=new Blob([body],{type:'text/csv'}),a=document.createElement('a');
+    a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1500);toast('Downloaded '+name)}
+  catch(e){toast('Export is blocked in this viewer \u2014 open the local file instead.')}}
+
+/* ── gate ── */
+function renderGate(){
+  $('#root').innerHTML='<div class="gate"><div class="gate-card">'+
+   '<h1>Timesheet to payroll</h1><p class="sub">Weekly hours, approval, and the hourly feed into the pay run.</p>'+
+   '<div class="badge-demo"><b>Demo</b> seeded data, no sign-in</div>'+
+   '<label for="g-role">View the app as</label><select id="g-role">'+
+   [['intern','Intern'],['consultant','Consultant'],['manager','Manager'],['admin','Payroll Admin']]
+     .map(r=>'<option value="'+r[0]+'">'+r[1]+'</option>').join('')+'</select>'+
+   '<label for="g-ent">Entity</label><select id="g-ent">'+
+   ENTITIES.map(e=>'<option value="'+e.id+'">'+e.name+'</option>').join('')+'</select>'+
+   '<div style="margin-top:18px"><button class="btn primary" id="g-go" style="width:100%">Enter the app</button></div>'+
+   '<p class="domain">Accounts are issued on <b id="g-dom">@corethread.com</b>. Contact your payroll admin if yours is not set up.</p>'+
+   '</div></div>';
+  $('#g-ent').addEventListener('change',e=>{$('#g-dom').textContent='@'+ENTITIES.find(x=>x.id===e.target.value).domain+'.com'});
+  $('#g-go').addEventListener('click',()=>{
+    const role=$('#g-role').value,ent=$('#g-ent').value;
+    let u=S.users.find(x=>x.entity===ent&&x.active&&x.role===role);
+    if(!u&&role==='intern')u=S.users.find(x=>x.entity===ent&&x.active&&x.role==='consultant');
+    if(!u){toast('No '+role+' is seeded for that entity.');return}
+    session={user:u.id};ui.tab=null;ui.sel=null;render();
+  });
+}
+
+/* ── chrome ── */
+const roleLabel=u=>({intern:'Intern',consultant:'Consultant',manager:'Manager',admin:'Payroll Admin'})[u.role];
+const tabsFor=r=>r==='manager'?[['dash','Dashboard'],['queue','Approval queue']]
+  :r==='admin'?[['dash','Dashboard'],['users','Users'],['queue','Approval queue'],['process','Mark processed'],['tracker','Tracker'],['reports','Reports']]
+  :[['dash','Dashboard'],['mine','My timesheets'],['new','New timesheet']];
+
+function render(){
+  rebuild();
+  if(!session)return renderGate();
+  const me=user(session.user),tabs=tabsFor(me.role);
+  if(!ui.tab||!tabs.some(t=>t[0]===ui.tab))ui.tab=tabs[0][0];
+  const unread=S.notifications.filter(n=>n.user===me.id&&!n.read).length;
+  const ent=ENTITIES.find(e=>e.id===me.entity);
+  $('#root').innerHTML=
+  '<header class="top"><div class="top-in">'+
+   '<div class="brand">Timesheet<span>'+esc(ent.name)+'</span></div>'+
+   '<nav class="nav">'+tabs.map(t=>'<button data-tab="'+t[0]+'" '+(ui.tab===t[0]?'aria-current="page"':'')+'>'+t[1]+'</button>').join('')+'</nav>'+
+   '<div class="who whoWrap"><button class="bell" id="bell" aria-label="Notifications"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>'+(unread?'<b>'+unread+'</b>':'')+'</button>'+
+   '<div class="nm">'+esc(me.name)+'<span>'+esc(roleLabel(me))+'</span></div>'+
+   '<button class="btn sm" id="switch">Switch</button>'+(ui.bell?notifPanel(me):'')+'</div></div></header>'+
+  '<div class="rail"><div class="rail-in">'+railFor(me)+'</div></div>'+
+  '<main class="shell"><div id="view">'+viewFor(me)+'</div>'+
+  '<aside><div class="card side"><div class="card-h"><div><h2>'+(ui.sel?'Trail':'Activity')+'</h2>'+
+   '<p>'+(ui.sel?'Every event written for this timesheet.':'Latest events in this entity. Rows are only ever added.')+'</p></div>'+
+   (ui.sel?'<button class="btn quiet" id="allAct">Show all</button>':'')+'</div>'+
+   '<div class="trail">'+trailHTML(me)+'</div></div></aside></main>'+
+  '<div class="foot"><span>Seeded and fictional. Customers, accounts and people follow the FinOS books.</span>'+
+   '<button class="btn quiet" id="reset">Reset the demo</button></div>'+(ui.modal?modalHTML():'');
+}
+function railFor(me){
+  const r=nextRun();
+  if(me.role==='admin'){const n=readyFor(me.entity).length;
+    return 'Next run <b>'+esc(r.label)+'</b> pays '+fDY(P(r.payday))+(r.shifted?' (moved back from '+fD(P(r.scheduled))+')':'')+
+      '. Cutoff '+fDY(P(r.cutoff))+'. '+n+' approved week'+(n===1?'':'s')+' waiting to be marked processed.'}
+  if(me.role==='manager'){const q=queueFor(me).length;
+    return q?'<b>'+q+'</b> timesheet'+(q===1?'':'s')+' waiting on you. Approve as a batch, or return one with a reason.'
+            :'Nothing waiting. Switch to a consultant and submit a week.'}
+  const d=sheetsOf(me.id).filter(t=>statusOf(t.id)==='draft').length;
+  return (d?'<b>'+d+'</b> week'+(d===1?'':'s')+' in draft. ':'Everything is filed. ')+
+    'Cutoff for the '+esc(r.label)+' run is '+fDY(P(r.cutoff))+'.';
+}
+const viewFor=me=>me.role==='admin'
+  ?{dash:adminDash,users:adminUsers,queue:adminQueue,process:adminProcess,tracker:adminTracker,reports:adminReports}[ui.tab](me)
+  :me.role==='manager'?{dash:mgrDash,queue:mgrQueue}[ui.tab](me)
+  :{dash:staffDash,mine:staffMine,new:staffNew}[ui.tab](me);
+const kpi=(v,l,st,tab,f)=>'<button class="kpi" data-jump="'+tab+'" data-kfilter="'+(f||'')+'"><div class="v">'+v+
+  '</div><div class="l">'+(st?'<span class="mk '+MK[st][0]+'" aria-hidden="true">'+MK[st][1]+'</span>':'')+esc(l)+'</div></button>';
+
+/* ── staff ── */
+function staffDash(me){
+  const all=sheetsOf(me.id),c=s=>all.filter(t=>statusOf(t.id)===s).length,r=rateAsOf(S.rates,me.id,iso(TODAY));
+  return '<div class="grid4">'+kpi(c('draft'),'Draft','draft','mine','draft')+kpi(c('submitted'),'Submitted','submitted','mine','submitted')+
+    kpi(c('approved'),'Approved','approved','mine','approved')+kpi(c('processed'),'Processed','processed','mine','processed')+'</div>'+
+  '<div class="card"><div class="card-h"><div><h2>'+esc(me.name)+'</h2><p>'+esc(roleLabel(me))+' \u00b7 '+esc(me.fn)+
+    ' \u00b7 hourly at '+M(r?r.hourly:0)+' \u00b7 caps '+H(me.weekly)+'h a week, '+H(me.daily||8)+'h a day \u00b7 manager '+esc(uName(me.mgr))+'</p></div>'+
+    '<button class="btn primary" data-jump="new">New timesheet</button></div><div class="card-b flush"><div class="scroll"><table>'+
+    '<thead><tr><th>Week ending</th><th>Stream</th><th>Customer</th><th class="r">Hours</th><th>Status</th><th class="r">Pay</th></tr></thead><tbody>'+
+    all.slice(0,8).map(t=>{const sn=snapOf(t.id);
+      return '<tr class="clickable '+(ui.sel===t.id?'sel':'')+'" data-sel="'+t.id+'"><td>'+fDY(P(t.we))+'</td><td>'+esc(streamOf(t).name)+
+      '</td><td>'+esc(t.customer||'\u2014')+'</td><td class="r num">'+H(totOf(t))+'</td><td>'+statusMark(t.id)+
+      '</td><td class="r num">'+(sn?M(sn.amount):'<span class="muted">\u2014</span>')+'</td></tr>'}).join('')+
+    '</tbody></table></div></div></div>';
+}
+function staffMine(me){
+  const all=sheetsOf(me.id),f=ui.filter,list=f==='all'?all:all.filter(t=>statusOf(t.id)===f);
+  const per=12,pages=Math.max(1,Math.ceil(list.length/per)),pg=Math.min(ui.page,pages-1);
+  const c=s=>all.filter(t=>statusOf(t.id)===s).length;
+  return '<div class="card"><div class="card-h"><div><h2>My timesheets</h2><p>'+all.length+' weeks on file.</p></div>'+
+   '<div class="row"><div class="seg">'+[['all','All',all.length],['draft','Draft',c('draft')],['submitted','Submitted',c('submitted')],
+    ['approved','Approved',c('approved')],['processed','Processed',c('processed')]]
+    .map(x=>'<button data-filter="'+x[0]+'" aria-pressed="'+(f===x[0])+'">'+x[1]+' ('+x[2]+')</button>').join('')+
+   '</div><button class="btn sm" data-csv="mine">Download CSV</button></div></div>'+
+   '<div class="card-b flush"><div class="scroll"><table><thead><tr><th>Week ending</th><th>Stream</th><th>Customer</th>'+
+   '<th class="r">Hours</th><th>Status</th><th class="r">Rate held</th><th class="r">Pay</th><th>Pay run</th></tr></thead><tbody>'+
+   (list.length?list.slice(pg*per,pg*per+per).map(t=>{const sn=snapOf(t.id),pr=procOf(t.id),s=lastEv(t.id,'submitted');
+     return '<tr class="clickable '+(ui.sel===t.id?'sel':'')+'" data-sel="'+t.id+'"><td>'+fDY(P(t.we))+
+      (s&&s.payload.late?' <span class="pill warn">Late</span>':'')+'</td><td>'+esc(streamOf(t).name)+'</td><td>'+esc(t.customer||'\u2014')+
+      '</td><td class="r num">'+H(totOf(t))+'</td><td>'+statusMark(t.id)+'</td><td class="r num">'+(sn?M(sn.rate):'<span class="muted">\u2014</span>')+
+      '</td><td class="r num">'+(sn?M(sn.amount):'<span class="muted">\u2014</span>')+'</td><td>'+(pr?esc(pr.runLabel):'<span class="muted">\u2014</span>')+'</td></tr>'}).join('')
+    :'<tr><td colspan="8"><div class="empty">Nothing in this state.</div></td></tr>')+'</tbody></table></div>'+
+   (pages>1?'<div class="card-b row" style="justify-content:space-between"><span class="muted">Page '+(pg+1)+' of '+pages+'</span>'+
+    '<span><button class="btn sm" data-page="'+(pg-1)+'" '+(pg===0?'disabled':'')+'>Previous</button> '+
+    '<button class="btn sm" data-page="'+(pg+1)+'" '+(pg>=pages-1?'disabled':'')+'>Next</button></span></div>':'')+'</div></div>';
+}
+function eligibleWeeks(u){
+  const out=[];
+  for(let n=3;n>=0;n--){const we=iso(add(ANCHOR,-7*n));
+    if(P(we)<add(ANCHOR,-7*(u.weeks-1)))continue;
+    const has=S.timesheets.find(t=>t.user===u.id&&t.we===we);
+    out.push({we,has,st:has?statusOf(has.id):null,w:windowOf(we)})}
+  return out;
+}
+function staffNew(me){
+  const el=eligibleWeeks(me),openW=el.filter(x=>!x.st||x.st==='draft');
+  const target=ui.newWeek||((openW[openW.length-1]||el[el.length-1]).we);
+  const ts=S.timesheets.find(t=>t.user===me.id&&t.we===target);
+  const win=windowOf(target),bl=blockedDays(me.id,target);
+  const cur=ts?(statusOf(ts.id)==='draft'?(ts.draftHours||[0,0,0,0,0]):hoursOf(ts)):[0,0,0,0,0];
+  const cap=me.daily||8,tot=cur.reduce((a,b)=>a+(+b||0),0);
+  const ret=ts?lastEv(ts.id,'returned'):null,editable=!ts||statusOf(ts.id)==='draft';
+  const streams=STREAMS[me.entity],sid=(ts&&ts.stream)||streams[0].id,sDef=streams.find(s=>s.id===sid);
+  const custs=CUSTOMERS.filter(c=>c.entity===me.entity&&c.status==='Active');
+  const run=win.run;
+  return '<div class="card"><div class="card-h"><div><h2>Where you stand</h2><p>The '+esc(run.label)+' run pays '+fDY(P(run.payday))+
+   (run.shifted?' (moved back from '+fD(P(run.scheduled))+', which is not a business day)':'')+'. Submission cutoff is '+fDY(P(run.cutoff))+'.</p></div></div>'+
+   '<div class="card-b flush"><div class="scroll"><table><thead><tr><th>Week ending</th><th>State</th><th>Window</th><th></th></tr></thead><tbody>'+
+   el.map(x=>'<tr><td>'+fDY(P(x.we))+'</td><td>'+(x.has?statusMark(x.has.id):mark('draft','Not started'))+'</td><td>'+
+    (x.w.state==='open'?'Open, on time':x.w.state==='late'?'<span class="pill warn">Late \u2014 reason required</span>':
+     x.w.state==='future'?'Opens '+fD(x.w.open):'<span class="pill bad">Locked '+fD(x.w.lock)+'</span>')+'</td>'+
+    '<td class="r">'+((!x.st||x.st==='draft')&&x.w.state!=='future'&&x.w.state!=='locked'
+      ?'<button class="btn sm" data-week="'+x.we+'">'+(x.we===target?'Editing':'Open')+'</button>':'')+'</td></tr>').join('')+
+   '</tbody></table></div></div></div>'+
+  '<div class="card"><div class="card-h"><div><h2>Week ending '+fFull(P(target))+'</h2><p>Monday to Friday. Blocked days cannot be filled.</p></div>'+
+   (win.state==='late'?'<span class="pill warn">Past cutoff</span>':'')+'</div><div class="card-b">'+
+   (ret&&editable?'<div class="note bad"><b>Returned by '+esc(uName(ret.actor))+'.</b> '+esc(ret.payload.reason)+'</div>':'')+
+   (!editable?'<div class="note">This week is '+esc(statusOf(ts.id))+' and can no longer be edited.</div>':'')+
+   '<div class="row" style="margin-bottom:14px"><label class="field"><span>Stream</span><select id="f-stream" '+(editable?'':'disabled')+'>'+
+    streams.map(s=>'<option value="'+s.id+'" '+(s.id===sid?'selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select></label>'+
+   '<label class="field"><span>Customer'+(sDef.cust==='optional'?' (optional)':'')+'</span><select id="f-cust" '+(editable&&sDef.cust!=='none'?'':'disabled')+'>'+
+    '<option value="">'+(sDef.cust==='none'?'Not applicable':'Choose a customer')+'</option>'+
+    custs.map(c=>'<option value="'+esc(c.name)+'" '+(ts&&ts.customer===c.name?'selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select></label></div>'+
+   '<div class="wk">'+cur.map((h,i)=>{const d=add(P(target),-(4-i)),b=bl[i];
+     return '<div class="d '+(b?'blocked':'')+'"><label>'+['Mon','Tue','Wed','Thu','Fri'][i]+'<em>'+fD(d)+'</em></label>'+
+      (b?'<div class="why">'+esc(b.why)+'<br><span class="muted">'+esc(b.src)+'</span></div>'
+        :'<input type="number" inputmode="decimal" min="0" max="'+cap+'" step="0.5" value="'+(h||'')+'" placeholder="0" data-h="'+i+'" '+(editable?'':'disabled')+'>')+'</div>'}).join('')+
+    '<div class="d tot'+(tot>me.weekly?' over':'')+'"><label>Total<em>cap '+H(me.weekly)+'h</em></label><div class="val" id="wkTot">'+H(tot)+'</div></div></div>'+
+   '<div id="capMsg" style="margin-top:12px"></div>'+
+   (win.state==='late'&&editable?'<div style="margin-top:12px"><label class="field"><span>Reason for the delay (required past cutoff)</span>'+
+     '<textarea id="f-late" placeholder="Why is this week being filed after the cutoff?"></textarea></label></div>':'')+
+   '<div style="margin-top:12px"><label class="field"><span>Notes (optional)</span><textarea id="f-notes" '+(editable?'':'disabled')+'>'+esc(ts?ts.notes:'')+'</textarea></label></div>'+
+   (editable?'<div class="row" style="margin-top:14px"><button class="btn" id="saveDraft">Save draft</button>'+
+     '<button class="btn primary" id="submitWk">Submit for approval</button>'+
+     '<span class="muted" style="font-size:12.5px">Goes to '+esc(uName(me.mgr))+'</span></div>':'')+'</div></div>';
+}
+
+/* ── manager ── */
+const queueFor=me=>S.timesheets.filter(t=>statusOf(t.id)==='submitted'&&user(t.user).mgr===me.id);
+function mgrDash(me){
+  const mine=S.timesheets.filter(t=>user(t.user).mgr===me.id),pend=queueFor(me);
+  return '<div class="grid4">'+kpi(pend.length,'Pending approval','submitted','queue')+
+   kpi(mine.filter(t=>statusOf(t.id)==='approved').length,'Approved','approved','queue')+
+   kpi(mine.filter(t=>statusOf(t.id)==='processed').length,'Processed','processed','queue')+
+   kpi(mine.length,'Team weeks on file','','queue')+'</div>'+
+  '<div class="card"><div class="card-h"><div><h2>Waiting for you</h2><p>Your direct reports only. Approving locks each week\u2019s own rate.</p></div>'+
+   '<button class="btn primary" data-jump="queue">Open the queue</button></div><div class="card-b flush">'+
+   (pend.length?'<div class="scroll"><table><thead><tr><th>Person</th><th>Week ending</th><th>Stream</th><th class="r">Hours</th><th>Submitted</th></tr></thead><tbody>'+
+    pend.map(t=>{const s=lastEv(t.id,'submitted');
+      return '<tr class="clickable '+(ui.sel===t.id?'sel':'')+'" data-sel="'+t.id+'"><td>'+esc(uName(t.user))+'</td><td>'+fDY(P(t.we))+
+      '</td><td>'+esc(streamOf(t).name)+(t.customer?' \u00b7 '+esc(t.customer):'')+'</td><td class="r num">'+H(s.payload.total)+
+      '</td><td>'+fTime(new Date(s.at))+(s.payload.late?' <span class="pill warn">Late</span>':'')+'</td></tr>'}).join('')+
+    '</tbody></table></div>':'<div class="empty">Nothing waiting.</div>')+'</div></div>';
+}
+function mgrQueue(me){
+  const pend=queueFor(me);
+  const done=S.timesheets.filter(t=>user(t.user).mgr===me.id&&['approved','processed'].includes(statusOf(t.id))).sort((a,b)=>a.we<b.we?1:-1).slice(0,40);
+  const tab=ui.filter==='approved'?'approved':'pending';
+  const picked=Object.keys(ui.picked).filter(k=>ui.picked[k]);
+  let h='<div class="card"><div class="card-h"><div><h2>Approval queue</h2>'+
+   '<p>Approving writes one event per timesheet inside one batch, each holding its own rate.</p></div>'+
+   '<div class="seg"><button data-filter="pending" aria-pressed="'+(tab==='pending')+'">Pending ('+pend.length+')</button>'+
+   '<button data-filter="approved" aria-pressed="'+(tab==='approved')+'">Approved ('+done.length+')</button></div></div>';
+  if(tab==='pending'){
+    h+='<div class="card-b flush">'+(pend.length?'<div class="card-b row" style="border-bottom:1px solid var(--border);justify-content:space-between">'+
+      '<label class="toggle"><input type="checkbox" id="selAll" '+(picked.length===pend.length?'checked':'')+'> Select all ('+pend.length+')</label>'+
+      '<button class="btn primary" id="batchApprove" '+(picked.length?'':'disabled')+'>Approve selected ('+picked.length+')</button></div>':'');
+    h+=pend.length?pend.map(t=>{const s=lastEv(t.id,'submitted'),u=user(t.user),bl=blockedDays(t.user,t.we),rt=rateAsOf(S.rates,t.user,t.we);
+      return '<div class="card-b" style="border-bottom:1px solid var(--border)"><div class="row" style="justify-content:space-between;align-items:flex-start">'+
+      '<label class="toggle" style="align-items:flex-start"><input type="checkbox" data-pick="'+t.id+'" '+(ui.picked[t.id]?'checked':'')+' style="margin-top:4px">'+
+      '<span><b>'+esc(u.name)+'</b> \u00b7 '+esc(u.fn)+'<br><span class="muted">Week ending '+fDY(P(t.we))+' \u00b7 '+esc(streamOf(t).name)+
+      (t.customer?' \u00b7 '+esc(t.customer):'')+' \u00b7 submitted '+fTime(new Date(s.at))+'</span>'+
+      (s.payload.late?'<br><span class="pill warn">Filed late</span> <span class="muted">'+esc(s.payload.lateReason||'')+'</span>':'')+'</span></label>'+
+      '<span>'+statusMark(t.id)+'</span></div><div class="wk" style="margin-top:10px">'+
+      s.payload.hours.map((x,i)=>'<div class="d '+(bl[i]?'blocked':'')+'"><label>'+['Mon','Tue','Wed','Thu','Fri'][i]+'<em>'+fD(add(P(t.we),-(4-i)))+'</em></label>'+
+        (bl[i]?'<div class="why">'+esc(bl[i].why)+'</div>':'<div class="val">'+H(x)+'</div>')+'</div>').join('')+
+      '<div class="d tot"><label>Total<em>cap '+H(s.payload.caps.weekly)+'h</em></label><div class="val">'+H(s.payload.total)+'</div></div></div>'+
+      '<div class="row" style="margin-top:12px"><button class="btn primary" data-approve="'+t.id+'">Approve at '+M(rt?rt.hourly:0)+'/h</button>'+
+      '<button class="btn" data-returnopen="'+t.id+'">Return with a reason</button>'+
+      '<button class="btn quiet" data-sel="'+t.id+'">Show trail</button></div></div>'}).join('')
+     :'<div class="empty">Nothing waiting. Switch to a consultant and submit a week.</div>';
+    h+='</div>';
+  }else{
+    h+='<div class="card-h" style="border-top:0"><div><p>Who approved each week, and when.</p></div>'+
+     '<button class="btn sm" data-csv="approved">Download CSV</button></div><div class="card-b flush"><div class="scroll"><table>'+
+     '<thead><tr><th>Person</th><th>Week ending</th><th class="r">Hours</th><th class="r">Rate held</th><th class="r">Pay</th><th>Approved by</th><th>Batch</th></tr></thead><tbody>'+
+     done.map(t=>{const sn=snapOf(t.id),a=lastEv(t.id,'approved');
+      return '<tr class="clickable '+(ui.sel===t.id?'sel':'')+'" data-sel="'+t.id+'"><td>'+esc(uName(t.user))+'</td><td>'+fDY(P(t.we))+
+      '</td><td class="r num">'+H(sn.total)+'</td><td class="r num">'+M(sn.rate)+'</td><td class="r num">'+M(sn.amount)+
+      '</td><td>'+esc(uName(a.actor))+(sn.override?' <span class="pill warn">Override</span>':'')+
+      '<br><span class="muted" style="font-size:11.5px">'+fTime(new Date(a.at))+'</span></td>'+
+      '<td class="muted num" style="font-size:11.5px">'+esc(sn.batch||'')+'</td></tr>'}).join('')+'</tbody></table></div></div>';
+  }
+  return h+'</div>';
+}
+
+/* ── admin ── */
+const readyFor=ent=>S.timesheets.filter(t=>t.entity===ent&&statusOf(t.id)==='approved');
+function adminDash(me){
+  const ent=me.entity,pend=S.timesheets.filter(t=>t.entity===ent&&statusOf(t.id)==='submitted'),ready=readyFor(ent);
+  const runs=RUNS.filter(r=>r.payday>=iso(add(TODAY,-18))).slice(0,4);
+  return '<div class="grid4">'+kpi(S.users.filter(u=>u.entity===ent&&u.active).length,'Active users','','users')+
+   kpi(pend.length,'Pending approval','submitted','queue')+kpi(ready.length,'Ready for payroll','approved','process')+
+   kpi(S.timesheets.filter(t=>t.entity===ent).length,'Weeks on file','','reports')+'</div>'+
+  '<div class="card"><div class="card-h"><div><h2>Pay calendar</h2><p>Derived when this page loads. Payday is the 15th and month end, moved back to the previous business day. '+
+   'Submission and approval are due two days before payday, and the cutoff is the Friday on or before that.</p></div></div><div class="card-b flush"><div class="scroll"><table>'+
+   '<thead><tr><th>Period</th><th>Scheduled</th><th>Payday</th><th>Due</th><th>Cutoff (Friday)</th><th class="r">Days away</th></tr></thead><tbody>'+
+   runs.map(r=>{const d=Math.round((P(r.payday)-TODAY)/DAY);
+     return '<tr><td>'+esc(r.label)+' \u00b7 '+r.year+'</td><td class="num">'+fD(P(r.scheduled))+'</td><td class="num">'+fD(P(r.payday))+
+      (r.shifted?' <span class="pill">moved</span>':'')+'</td><td class="num">'+fD(P(r.due))+'</td><td class="num">'+fD(P(r.cutoff))+
+      '</td><td class="r num">'+(d<0?Math.abs(d)+'d ago':d+'d')+'</td></tr>'}).join('')+'</tbody></table></div></div></div>'+
+  '<div class="card"><div class="card-h"><div><h2>Ready for payroll</h2><p>Approved hourly weeks for '+esc(ENTITIES.find(e=>e.id===ent).name)+
+   '. Salaried people are already in the pay run and never appear here.</p></div><button class="btn primary" data-jump="process">Mark processed</button></div>'+
+   '<div class="card-b flush">'+(ready.length?'<div class="scroll"><table><thead><tr><th>Person</th><th>Week ending</th><th>Stream</th>'+
+   '<th class="r">Hours</th><th class="r">Pay</th><th>Pay run</th></tr></thead><tbody>'+
+   ready.slice(0,10).map(t=>{const sn=snapOf(t.id),r=runForWeek(t.we);
+     return '<tr class="clickable '+(ui.sel===t.id?'sel':'')+'" data-sel="'+t.id+'"><td>'+esc(uName(t.user))+'</td><td>'+fDY(P(t.we))+
+      '</td><td>'+esc(streamOf(t).name)+'</td><td class="r num">'+H(sn.total)+'</td><td class="r num">'+M(sn.amount)+
+      '</td><td>'+esc(r.label)+'</td></tr>'}).join('')+'</tbody></table></div>':'<div class="empty">Nothing approved and waiting.</div>')+'</div></div>';
+}
+function adminUsers(me){
+  const list=S.users.filter(u=>u.entity===me.entity);
+  const show=ui.filter==='inactive'?list.filter(u=>!u.active):list.filter(u=>u.active);
+  return '<div class="card"><div class="card-h"><div><h2>Users</h2><p>'+list.filter(u=>u.active).length+' active, '+
+   list.filter(u=>!u.active).length+' inactive. Only hourly people file timesheets.</p></div>'+
+   '<div class="seg"><button data-filter="active" aria-pressed="'+(ui.filter!=='inactive')+'">Active</button>'+
+   '<button data-filter="inactive" aria-pressed="'+(ui.filter==='inactive')+'">Inactive</button></div></div>'+
+   '<div class="card-b flush"><div class="scroll"><table><thead><tr><th>Name</th><th>Role</th><th>Function</th><th>Pay type</th>'+
+   '<th class="r">Rate</th><th class="r">Weekly</th><th class="r">Daily</th><th>Manager</th><th></th></tr></thead><tbody>'+
+   show.map(u=>{const r=rateAsOf(S.rates,u.id,iso(TODAY)),cross=u.mgr&&user(u.mgr).fn!==u.fn;
+    return '<tr><td>'+esc(u.name)+(u.active?'':' <span class="pill">Inactive</span>')+'</td><td>'+esc(roleLabel(u))+'</td><td>'+esc(u.fn)+
+     '</td><td>'+(u.pay==='hourly'?'Hourly':'Salaried')+'</td><td class="r num">'+(r?M(r.hourly):'<span class="muted">\u2014</span>')+
+     '</td><td class="r num">'+(u.weekly?H(u.weekly):'<span class="muted">\u2014</span>')+
+     '</td><td class="r num">'+(u.pay==='hourly'?H(u.daily||8)+(u.daily?'':' <span class="muted">global</span>'):'<span class="muted">\u2014</span>')+
+     '</td><td>'+(u.mgr?esc(uName(u.mgr)):'<span class="muted">\u2014</span>')+(cross?' <span class="pill warn">Cross-department</span>':'')+
+     '</td><td class="r">'+(u.pay==='hourly'?'<button class="btn sm" data-edit="'+u.id+'">Edit</button>':'')+'</td></tr>'}).join('')+
+   '</tbody></table></div></div></div>'+
+   '<div class="card"><div class="card-h"><div><h2>Admin log</h2><p>User changes, appended and never edited.</p></div></div>'+
+   '<div class="card-b flush"><div class="scroll"><table><thead><tr><th>When</th><th>By</th><th>User</th><th>Change</th></tr></thead><tbody>'+
+   (S.adminLog.length?S.adminLog.slice().reverse().map(a=>'<tr><td class="num">'+fTime(new Date(a.at))+'</td><td>'+esc(uName(a.actor))+
+     '</td><td>'+esc(uName(a.user))+'</td><td>'+esc(a.text)+'</td></tr>').join('')
+    :'<tr><td colspan="4"><div class="empty">No changes yet.</div></td></tr>')+'</tbody></table></div></div></div>';
+}
+function adminQueue(me){
+  const pend=S.timesheets.filter(t=>t.entity===me.entity&&statusOf(t.id)==='submitted');
+  return '<div class="card"><div class="card-h"><div><h2>Approval queue \u2014 overrides</h2>'+
+   '<p>These belong to managers. Notify them, or approve with a comment when a pay run will not wait. An override is recorded against you and stays on the record.</p></div></div>'+
+   '<div class="card-b flush">'+(pend.length?pend.map(t=>{const s=lastEv(t.id,'submitted'),u=user(t.user);
+    return '<div class="card-b" style="border-bottom:1px solid var(--border)"><div class="row" style="justify-content:space-between">'+
+     '<span><b>'+esc(u.name)+'</b> \u00b7 manager '+esc(uName(u.mgr))+'<br><span class="muted">Week ending '+fDY(P(t.we))+' \u00b7 '+
+     esc(streamOf(t).name)+' \u00b7 '+H(s.payload.total)+'h \u00b7 submitted '+fTime(new Date(s.at))+'</span></span><span>'+statusMark(t.id)+'</span></div>'+
+     '<div class="row" style="margin-top:10px"><button class="btn" data-chase="'+u.mgr+'">Notify the manager</button>'+
+     '<button class="btn" data-override="'+t.id+'">Override approve</button>'+
+     '<button class="btn quiet" data-sel="'+t.id+'">Show trail</button></div></div>'}).join('')
+   :'<div class="empty">No timesheets are waiting on a manager.</div>')+'</div></div>';
+}
+function adminProcess(me){
+  const ready=readyFor(me.entity);
+  const picked=Object.keys(ui.picked).filter(k=>ui.picked[k]&&ready.some(t=>t.id===k));
+  const total=picked.reduce((a,id)=>a+snapOf(id).amount,0);
+  return '<div class="card"><div class="card-h"><div><h2>Mark processed</h2>'+
+   '<p>This records that the pay run has been made in the payroll system. One entity at a time, so what leaves here is a journal for one set of books. '+
+   'Each week carries the pay run its own cutoff put it in.</p></div>'+
+   '<button class="btn primary" id="markProc" '+(picked.length?'':'disabled')+'>Mark '+picked.length+' processed</button></div><div class="card-b flush">'+
+   (ready.length?'<div class="card-b" style="border-bottom:1px solid var(--border)"><label class="toggle">'+
+     '<input type="checkbox" id="selAll" '+(picked.length===ready.length?'checked':'')+'> Select all ('+ready.length+')</label></div>'+
+    '<div class="scroll"><table><thead><tr><th></th><th>Person</th><th>Week ending</th><th>Stream</th><th>Customer</th>'+
+    '<th class="r">Hours</th><th class="r">Rate held</th><th class="r">Pay</th><th>Pay run</th><th>Expense head</th></tr></thead><tbody>'+
+    ready.map(t=>{const sn=snapOf(t.id),u=user(t.user),st=streamOf(t),def=ui.accts[t.id]||accountFor(st,u.fn),r=runForWeek(t.we);
+     return '<tr><td><input type="checkbox" data-pick="'+t.id+'" '+(ui.picked[t.id]?'checked':'')+'></td>'+
+      '<td>'+esc(u.name)+'<br><span class="muted" style="font-size:11.5px">'+esc(u.fn)+'</span></td><td>'+fDY(P(t.we))+
+      '</td><td>'+esc(st.name)+'</td><td>'+esc(t.customer||'\u2014')+'</td><td class="r num">'+H(sn.total)+
+      '</td><td class="r num">'+M(sn.rate)+'</td><td class="r num">'+M(sn.amount)+'</td><td>'+esc(r.label)+'</td>'+
+      '<td><select data-acct="'+t.id+'">'+Object.keys(ACCOUNTS).map(k=>'<option value="'+k+'" '+(String(def)===k?'selected':'')+'>'+
+        k+' \u00b7 '+esc(ACCOUNTS[k])+'</option>').join('')+'</select></td></tr>'}).join('')+
+    '</tbody><tfoot><tr><td colspan="7" class="r">Selected</td><td class="r num">'+M(total)+'</td><td colspan="2"></td></tr></tfoot></table></div>'
+   :'<div class="empty">The payroll queue is empty. Every approved week has been processed.</div>')+'</div></div>';
+}
+function adminTracker(me){
+  const staff=S.users.filter(u=>u.entity===me.entity&&u.pay==='hourly'&&u.active);
+  const mgrs=S.users.filter(u=>u.entity===me.entity&&u.role==='manager'&&u.active);
+  const run=nextRun();
+  return '<div class="card"><div class="card-h"><div><h2>Staff</h2><p>Against the '+esc(run.label)+' run, cutoff '+fDY(P(run.cutoff))+'.</p></div></div>'+
+   '<div class="card-b flush"><div class="scroll"><table><thead><tr><th>Person</th><th>Last submitted</th><th>Open weeks</th><th>State</th><th>Notified</th><th></th></tr></thead><tbody>'+
+   staff.map(u=>{const subs=sheetsOf(u.id).filter(t=>lastEv(t.id,'submitted')),last=subs[0];
+     const open=eligibleWeeks(u).filter(x=>(!x.st||x.st==='draft')&&x.w.state!=='future');
+     const over=open.filter(x=>x.w.state!=='open');
+     const s=over.length?['bad','Overdue']:open.length?['warn','Due']:['good','On track'];
+     const ch=S.chases.filter(c=>c.target===u.id).length;
+     return '<tr><td>'+esc(u.name)+'<br><span class="muted" style="font-size:11.5px">'+esc(u.fn)+' \u00b7 mgr '+esc(uName(u.mgr))+'</span></td>'+
+      '<td>'+(last?fDY(P(last.we)):'<span class="muted">never</span>')+'</td><td class="num">'+open.length+
+      (over.length?' <span class="muted">('+over.length+' past cutoff)</span>':'')+'</td><td><span class="pill '+s[0]+'">'+s[1]+'</span></td>'+
+      '<td class="num">'+(ch?ch+'\u00d7':'\u2014')+'</td><td class="r">'+(open.length?'<button class="btn sm" data-chase="'+u.id+'">Notify</button>':'')+'</td></tr>'}).join('')+
+   '</tbody></table></div></div></div>'+
+   '<div class="card"><div class="card-h"><div><h2>Managers</h2><p>Approvals still open past the date they were due.</p></div></div>'+
+   '<div class="card-b flush"><div class="scroll"><table><thead><tr><th>Manager</th><th class="r">Waiting</th><th class="r">Past due</th><th>State</th><th></th></tr></thead><tbody>'+
+   mgrs.map(m=>{const q=queueFor(m),late=q.filter(t=>iso(TODAY)>runForWeek(t.we).due);
+     const s=late.length?['bad','Late']:q.length?['warn','Open']:['good','Clear'];
+     return '<tr><td>'+esc(m.name)+'</td><td class="r num">'+q.length+'</td><td class="r num">'+late.length+
+      '</td><td><span class="pill '+s[0]+'">'+s[1]+'</span></td><td class="r">'+(q.length?'<button class="btn sm" data-chase="'+m.id+'">Notify</button>':'')+'</td></tr>'}).join('')+
+   '</tbody></table></div></div></div>';
+}
+function adminReports(me){
+  const r=ui.rpt,runs=RUNS.filter(x=>x.payday<=iso(add(TODAY,20))).slice(-52);
+  if(!r.from)r.from=runs[Math.max(0,runs.length-4)].id;
+  if(!r.to)r.to=runs[runs.length-1].id;
+  const fr=runs.find(x=>x.id===r.from)||runs[0],to=runs.find(x=>x.id===r.to)||runs[runs.length-1];
+  const people=S.users.filter(u=>u.entity===me.entity&&u.pay==='hourly');
+  const rows=S.timesheets.filter(t=>{
+    if(t.entity!==me.entity)return false;
+    const st=statusOf(t.id);
+    if(r.status==='processed'?st!=='processed':!['approved','processed'].includes(st))return false;
+    if(r.who!=='all'&&t.user!==r.who)return false;
+    const run=runForWeek(t.we);return run.payday>=fr.payday&&run.payday<=to.payday;
+  }).sort((a,b)=>a.we<b.we?1:-1);
+  const cur=u=>{const x=rateAsOf(S.rates,u,iso(TODAY));return x?x.hourly:0};
+  let tS=0,tR=0;
+  const body=rows.map(t=>{const sn=snapOf(t.id),pr=procOf(t.id),a=lastEv(t.id,'approved'),run=runForWeek(t.we);
+    const re=+(cur(t.user)*sn.total).toFixed(2);tS+=sn.amount;tR+=re;
+    return '<tr class="clickable '+(ui.sel===t.id?'sel':'')+'" data-sel="'+t.id+'"><td>'+fDY(P(t.we))+'</td><td>'+esc(uName(t.user))+
+     '</td><td>'+esc(streamOf(t).name)+'</td><td>'+esc(t.customer||'\u2014')+'</td><td class="r num">'+H(sn.total)+
+     '</td><td class="r num">'+M(sn.rate)+'</td><td class="r num">'+M(sn.amount)+'</td>'+
+     (ui.recompute?'<td class="r num">'+M(cur(t.user))+'</td><td class="r num">'+M(re)+'</td><td class="r num">'+
+       (Math.abs(re-sn.amount)>0.005?'+'+M(re-sn.amount).slice(1):'\u2014')+'</td>':'')+
+     '<td>'+(pr?pr.account+' \u00b7 '+esc(ACCOUNTS[pr.account]):'<span class="muted">not set</span>')+'</td><td>'+esc(run.label)+
+     '</td><td>'+esc(uName(a.actor))+(sn.override?' <span class="pill warn">Override</span>':'')+'</td><td>'+statusMark(t.id)+'</td></tr>'}).join('');
+  const dual=S.timesheets.filter(t=>{const sn=snapOf(t.id),p=lastEv(t.id,'processed'),a=lastEv(t.id,'approved');
+    return sn&&p&&sn.override&&a.actor===p.actor}).length;
+  return '<div class="card"><div class="card-h"><div><h2>Reports</h2><p>Pay is read from the approval event, never recomputed from the rate table.</p></div>'+
+   '<button class="btn sm" data-csv="report">Download CSV</button></div><div class="card-b"><div class="row">'+
+   '<label class="field"><span>From pay run</span><select data-rpt="from">'+runs.map(x=>'<option value="'+x.id+'" '+(x.id===r.from?'selected':'')+'>'+esc(x.label)+' \u00b7 '+x.year+'</option>').join('')+'</select></label>'+
+   '<label class="field"><span>To pay run</span><select data-rpt="to">'+runs.map(x=>'<option value="'+x.id+'" '+(x.id===r.to?'selected':'')+'>'+esc(x.label)+' \u00b7 '+x.year+'</option>').join('')+'</select></label>'+
+   '<label class="field"><span>Person</span><select data-rpt="who"><option value="all">Everyone</option>'+
+    people.map(p=>'<option value="'+p.id+'" '+(r.who===p.id?'selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label>'+
+   '<label class="field"><span>State</span><select data-rpt="status"><option value="processed" '+(r.status==='processed'?'selected':'')+'>Processed</option>'+
+    '<option value="approved" '+(r.status==='approved'?'selected':'')+'>Approved and processed</option></select></label>'+
+   '<label class="toggle"><input type="checkbox" id="recomp" '+(ui.recompute?'checked':'')+'> Recompute at today\u2019s rate</label></div></div>'+
+   '<div class="card-b flush"><div class="scroll"><table><thead><tr><th>Week ending</th><th>Person</th><th>Stream</th><th>Customer</th>'+
+   '<th class="r">Hours</th><th class="r">Rate held</th><th class="r">Pay</th>'+
+   (ui.recompute?'<th class="r">Today\u2019s rate</th><th class="r">If recomputed</th><th class="r">Difference</th>':'')+
+   '<th>Expense head</th><th>Pay run</th><th>Approved by</th><th>Status</th></tr></thead><tbody>'+
+   (body||'<tr><td colspan="14"><div class="empty">Nothing in this range.</div></td></tr>')+'</tbody>'+
+   (rows.length?'<tfoot><tr><td colspan="6" class="r">'+rows.length+' weeks</td><td class="r num">'+M(tS)+'</td>'+
+     (ui.recompute?'<td></td><td class="r num">'+M(tR)+'</td><td class="r num">'+(Math.abs(tR-tS)>0.005?'+'+M(tR-tS).slice(1):'\u2014')+'</td>':'')+
+     '<td colspan="4"></td></tr></tfoot>':'')+'</table></div></div></div>'+
+   (ui.recompute&&rows.length&&Math.abs(tR-tS)<0.005?'<div class="note">Both columns agree because no rate changed in this range. Open Users, add a rate row, and come back.</div>':'')+
+   (dual?'<div class="note bad"><b>Segregation check.</b> '+dual+' timesheet'+(dual===1?' was':'s were')+' override-approved and processed by the same person.</div>':'');
+}
+
+/* ── trail + notifications ── */
+function trailHTML(me){
+  let list;
+  if(ui.sel)list=evs(ui.sel);
+  else{const mine={};S.timesheets.filter(t=>t.entity===me.entity).forEach(t=>mine[t.id]=1);
+    list=S.events.filter(e=>mine[e.ts]).sort((a,b)=>a.at<b.at?-1:1).slice(-16)}
+  if(!list.length)return '<div class="empty">Nothing yet.</div>';
+  const V={created:['draft','Created'],submitted:['submitted','Submitted'],returned:['returned','Returned'],
+    approved:['approved','Approved'],processed:['processed','Processed'],reopened:['draft','Reopened']};
+  return list.map(e=>{const v=V[e.type],p=e.payload;let x='';
+    if(e.type==='submitted')x='<div class="ev-p">'+H(p.total)+'h \u00b7 caps '+H(p.caps.weekly)+'h week, '+H(p.caps.daily)+'h day'+
+      (p.late?' \u00b7 filed late':'')+'</div>'+(p.lateReason?'<div class="ev-p q">'+esc(p.lateReason)+'</div>':'');
+    if(e.type==='returned')x='<div class="ev-p q">'+esc(p.reason)+'</div>';
+    if(e.type==='approved')x='<div class="ev-p">Rate held at '+M(p.rate)+'/h \u00b7 '+H(p.total)+'h \u00b7 <b>'+M(p.amount)+'</b>'+
+      (p.override?' \u00b7 override':'')+'</div>'+(p.comment?'<div class="ev-p q">'+esc(p.comment)+'</div>':'');
+    if(e.type==='processed')x='<div class="ev-p">'+esc(p.runLabel)+' \u00b7 '+p.account+' '+esc(ACCOUNTS[p.account]||'')+'</div>';
+    if(e.type==='reopened')x='<div class="ev-p q">'+esc(p.reason||'')+'</div>';
+    const t=S.timesheets.find(z=>z.id===e.ts);
+    return '<div class="ev"><span class="mk '+MK[v[0]][0]+'" aria-hidden="true">'+MK[v[0]][1]+'</span><div>'+
+     '<div class="ev-t">'+v[1]+' <span>by '+esc(uName(e.actor))+'</span></div>'+
+     '<div class="ev-m">'+fTime(new Date(e.at))+(ui.sel?'':' \u00b7 '+esc(t?uName(t.user).split(' ')[0]+' '+fD(P(t.we)):''))+'</div>'+x+'</div></div>'}).join('');
+}
+function notifPanel(me){
+  const n=S.notifications.filter(x=>x.user===me.id).slice().reverse();
+  return '<div class="drop">'+(n.length?n.map(x=>x.go
+    ?'<button class="n go '+(x.read?'':'unread')+'" data-note="'+x.id+'">'+esc(x.text)+
+      '<small>'+fTime(new Date(x.at))+' \u00b7 open</small></button>'
+    :'<div class="n '+(x.read?'':'unread')+'">'+esc(x.text)+'<small>'+fTime(new Date(x.at))+'</small></div>')
+    .join(''):'<div class="empty">No notifications.</div>')+'</div>';
+}
+
+/* ── modals ── */
+function modalHTML(){
+  const m=ui.modal;
+  const shell=(t,b,f)=>'<div class="scrim" data-scrim><div class="modal" role="dialog" aria-modal="true">'+
+    '<div class="modal-h"><h3>'+t+'</h3></div><div class="modal-b">'+b+'</div><div class="modal-f">'+f+'</div></div></div>';
+  const cancel='<button class="btn" data-close="1">Cancel</button>';
+  if(m.kind==='submit'){const t=m.ts,me=user(session.user),st=streamOf(t);
+    return shell('Submit this week?','<p>Week ending '+fFull(P(t.we))+', '+H(m.total)+' hours on '+esc(st.name)+
+      (t.customer?' for '+esc(t.customer):'')+'.</p><p>It goes to '+esc(uName(me.mgr))+
+      ' for approval. The rate in force for this week is locked when they approve it.</p>'+
+      (m.late?'<div class="note bad"><b>Past the cutoff.</b> This week rolls into the '+esc(runForWeek(iso(add(P(t.we),7))).label)+
+        ' run and is marked late.</div>':''),cancel+'<button class="btn primary" data-do="submit">Submit</button>')}
+  if(m.kind==='return')return shell('Return this week?','<p>'+esc(uName(m.owner))+', week ending '+fFull(P(m.we))+
+    '. It goes back to draft and the submission stays in the trail.</p><label class="field"><span>Reason (required)</span>'+
+    '<textarea id="m-reason" placeholder="What needs fixing?"></textarea></label><div class="ev-p" id="m-err" style="color:var(--danger)"></div>',
+    cancel+'<button class="btn primary" data-do="return">Send it back</button>');
+  if(m.kind==='batch'){const rows=m.ids.map(id=>{const t=S.timesheets.find(x=>x.id===id);
+      return{t,rt:rateAsOf(S.rates,t.user,t.we),total:lastEv(id,'submitted').payload.total}});
+    const sum=rows.reduce((a,r)=>a+(r.rt?r.rt.hourly:0)*r.total,0);
+    return shell('Approve '+rows.length+' timesheet'+(rows.length===1?'':'s')+'?',
+      '<dl class="kv">'+rows.map(r=>'<dt>'+esc(uName(r.t.user))+' \u00b7 '+fD(P(r.t.we))+'</dt><dd>'+H(r.total)+'h \u00d7 '+
+        M(r.rt?r.rt.hourly:0)+' = '+M((r.rt?r.rt.hourly:0)*r.total)+'</dd>').join('')+
+      '<dt><b>Total</b></dt><dd><b>'+M(sum)+'</b></dd></dl>'+
+      '<p style="margin-top:12px">Each week locks its own rate, so a batch spanning a rate change stays correct. They move to the payroll queue.</p>',
+      cancel+'<button class="btn primary" data-do="batch">Approve</button>')}
+  if(m.kind==='override'){const t=m.ts,u=user(t.user),rt=rateAsOf(S.rates,t.user,t.we);
+    return shell('Override approve?','<div class="note bad"><b>This bypasses '+esc(uName(u.mgr))+
+      '.</b> The override is recorded against you and shows on the timesheet, in reports and in every export.</div><p>'+
+      esc(u.name)+', week ending '+fFull(P(t.we))+'. '+H(lastEv(t.id,'submitted').payload.total)+'h at '+M(rt?rt.hourly:0)+'/h.</p>'+
+      '<label class="field"><span>Comment (required)</span><textarea id="m-reason" placeholder="Why is this approved without the manager?"></textarea></label>'+
+      '<div class="ev-p" id="m-err" style="color:var(--danger)"></div>',cancel+'<button class="btn primary" data-do="override">Approve anyway</button>')}
+  if(m.kind==='process'){const rows=m.ids.map(id=>{const t=S.timesheets.find(x=>x.id===id);
+      return{t,sn:snapOf(id),acct:ui.accts[id]||accountFor(streamOf(t),user(t.user).fn)}});
+    const sum=rows.reduce((a,r)=>a+r.sn.amount,0),by={};rows.forEach(r=>by[r.acct]=(by[r.acct]||0)+r.sn.amount);
+    return shell('Confirm processing','<p>This records that the pay run has been made in the payroll system. It does not pay anyone.</p>'+
+      '<dl class="kv"><dt>Entity</dt><dd>'+esc(ENTITIES.find(e=>e.id===m.entity).name)+'</dd><dt>Timesheets</dt><dd>'+rows.length+
+      '</dd><dt>Hours</dt><dd>'+H(rows.reduce((a,r)=>a+r.sn.total,0))+'</dd><dt><b>Total pay</b></dt><dd><b>'+M(sum)+'</b></dd></dl>'+
+      '<p style="margin:12px 0 6px">Journal by expense head</p><dl class="kv">'+
+      Object.keys(by).map(k=>'<dt>'+k+' \u00b7 '+esc(ACCOUNTS[k])+'</dt><dd>'+M(by[k])+'</dd>').join('')+'</dl>',
+      cancel+'<button class="btn primary" data-do="process">Confirm</button>')}
+  if(m.kind==='chase'){const u=user(m.target),r=nextRun();
+    return shell('Notify '+esc(u.name),'<p>Confirm and two things happen at once: a notification appears in their app, and the reminder email is triggered.</p>'+
+     '<div class="note"><b>To '+esc(u.name)+(u.mgr?' and '+esc(uName(u.mgr)):'')+'</b><br>'+
+     (u.role==='manager'?'Timesheets are waiting for your approval past the date they were due for the '+esc(r.label)+' run.'
+      :'A timesheet has not been filed. The cutoff for the '+esc(r.label)+' run is '+fDY(P(r.cutoff))+'.')+'</div>',
+     cancel+'<button class="btn primary" data-do="chase">Notify</button>')}
+  if(m.kind==='edit'){const u=user(m.user),r=rateAsOf(S.rates,u.id,iso(TODAY));
+    const mgrs=S.users.filter(x=>x.role==='manager'&&x.entity===u.entity&&x.active);
+    const hist=S.rates.filter(x=>x.user===u.id).sort((a,b)=>a.from<b.from?1:-1);
+    return shell('Edit '+esc(u.name),
+     '<div class="row"><label class="field"><span>Entity</span><select id="e-ent">'+
+      ENTITIES.map(e=>'<option value="'+e.id+'" '+(e.id===u.entity?'selected':'')+'>'+esc(e.name)+'</option>').join('')+'</select></label>'+
+     '<label class="field"><span>Function</span><select id="e-fn">'+
+      Object.keys(FUNCTIONS).map(f=>'<option value="'+esc(f)+'" '+(f===u.fn?'selected':'')+'>'+esc(f)+'</option>').join('')+'</select></label></div>'+
+     '<div class="row" style="margin-top:10px"><label class="field"><span>Weekly cap (h)</span><input type="number" id="e-weekly" min="1" max="60" step="0.5" value="'+u.weekly+'"></label>'+
+     '<label class="field"><span>Daily cap (h)</span><input type="number" id="e-daily" min="1" max="12" step="0.5" value="'+(u.daily||8)+'"></label>'+
+     '<label class="field"><span>Manager</span><select id="e-mgr">'+
+      mgrs.map(x=>'<option value="'+x.id+'" '+(x.id===u.mgr?'selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></label></div>'+
+     '<div class="note" style="margin:14px 0 8px"><b>A rate change is a new row, not an edit.</b> Past weeks keep the rate they were approved at.</div>'+
+     '<div class="row"><label class="field"><span>New hourly rate</span><input type="number" id="e-rate" min="1" step="0.5" value="'+((r?r.hourly:20)+8).toFixed(2)+'"></label>'+
+     '<label class="field"><span>In force from</span><input type="date" id="e-from" value="'+iso(TODAY)+'"></label>'+
+     '<button class="btn" data-do="raise">Add rate row</button></div>'+
+     '<p style="margin:14px 0 6px;font-size:13px;color:var(--ink-2)">Rate history</p><dl class="kv">'+
+      hist.map((x,i)=>'<dt>'+fDY(P(x.from))+(i===0?' \u00b7 current':'')+'</dt><dd>'+M(x.hourly)+'</dd>').join('')+'</dl>'+
+     '<div class="ev-p" id="m-err" style="color:var(--danger)"></div>',
+     '<button class="btn" data-close="1">Close</button><button class="btn primary" data-do="saveUser">Save changes</button>')}
+  return '';
+}
+
+/* ── interaction ── */
+document.addEventListener('click',function(e){
+  if(e.target.classList&&e.target.classList.contains('scrim')){ui.modal=null;return render()}
+  const t=e.target.closest('button,tr[data-sel]');if(!t)return;
+  const me=session?user(session.user):null;
+  const d=t.dataset;
+  if(d.close){ui.modal=null;return render()}
+  if(t.id==='reset'){seed();session=null;return render()}
+  if(t.id==='switch'){session=null;ui.bell=false;return render()}
+  if(d.note){const n=S.notifications.find(x=>x.id===d.note);ui.bell=false;
+    if(n){n.read=true;if(n.go){ui.tab=n.go.tab;ui.sel=n.go.sel||null;ui.filter=n.go.filter||'all';
+      ui.page=0;if(n.go.week)ui.newWeek=n.go.week}}
+    return render()}
+  if(t.id==='bell'){if(ui.bell)S.notifications.forEach(n=>{if(n.user===me.id)n.read=true});ui.bell=!ui.bell;return render()}
+  if(d.tab){ui.tab=d.tab;ui.page=0;ui.picked={};ui.filter=d.tab==='queue'&&me.role==='manager'?'pending':'all';return render()}
+  if(d.jump){ui.tab=d.jump;ui.page=0;ui.picked={};ui.filter=d.kfilter||'all';return render()}
+  if(d.filter){ui.filter=d.filter;ui.page=0;return render()}
+  if(d.page!==undefined){ui.page=+d.page;return render()}
+  if(t.id==='allAct'){ui.sel=null;return render()}
+  if(d.sel){ui.sel=ui.sel===d.sel?null:d.sel;return render()}
+  if(d.week){saveDraft();ui.newWeek=d.week;return render()}
+  if(t.id==='saveDraft'){saveDraft();toast('Draft saved.');return render()}
+  if(t.id==='submitWk')return trySubmit();
+  if(d.approve){ui.modal={kind:'batch',ids:[d.approve]};return render()}
+  if(d.returnopen){const ts=S.timesheets.find(x=>x.id===d.returnopen);ui.modal={kind:'return',id:ts.id,owner:ts.user,we:ts.we};return render()}
+  if(t.id==='batchApprove'){const ids=Object.keys(ui.picked).filter(k=>ui.picked[k]);if(ids.length)ui.modal={kind:'batch',ids};return render()}
+  if(d.override){ui.modal={kind:'override',ts:S.timesheets.find(x=>x.id===d.override)};return render()}
+  if(t.id==='markProc'){const ids=Object.keys(ui.picked).filter(k=>ui.picked[k]);if(ids.length)ui.modal={kind:'process',ids,entity:me.entity};return render()}
+  if(d.chase){ui.modal={kind:'chase',target:d.chase};return render()}
+  if(d.edit){ui.modal={kind:'edit',user:d.edit};return render()}
+  if(d.csv)return doCsv(d.csv,me);
+  if(d.do)return doAction(d.do,me);
+});
+document.addEventListener('change',function(e){
+  const el=e.target,me=session?user(session.user):null;
+  if(el.id==='selAll'){const list=ui.tab==='process'?readyFor(me.entity):queueFor(me);
+    ui.picked={};if(el.checked)list.forEach(t=>ui.picked[t.id]=true);return render()}
+  if(el.dataset.pick){ui.picked[el.dataset.pick]=el.checked;return render()}
+  if(el.dataset.acct){ui.accts[el.dataset.acct]=+el.value;return}
+  if(el.id==='recomp'){ui.recompute=el.checked;return render()}
+  if(el.dataset.rpt){ui.rpt[el.dataset.rpt]=el.value;return render()}
+  if(el.id==='f-stream'){saveDraft();return render()}
+  if(el.id==='f-cust'){saveDraft()}
+});
+document.addEventListener('input',function(e){
+  const el=e.target;if(el.dataset.h===undefined)return;
+  const me=user(session.user),cap=me.daily||8,hrs=[0,0,0,0,0];
+  document.querySelectorAll('[data-h]').forEach(v=>hrs[+v.dataset.h]=parseFloat(v.value)||0);
+  const tot=hrs.reduce((a,b)=>a+b,0);
+  $('#wkTot').textContent=H(tot);
+  $('#wkTot').parentElement.classList.toggle('over',tot>me.weekly);
+  const over=hrs.map((h,i)=>h>cap?i:-1).filter(i=>i>=0),msg=$('#capMsg');
+  if(over.length)msg.innerHTML='<div class="note bad"><b>Over the daily cap.</b> '+
+    over.map(i=>['Monday','Tuesday','Wednesday','Thursday','Friday'][i]).join(', ')+' exceeds '+H(cap)+
+    ' hours. A day cannot hold more than the contract allows.</div>';
+  else if(tot>me.weekly)msg.innerHTML='<div class="note bad"><b>Over the weekly cap.</b> '+H(tot)+
+    ' hours against a cap of '+H(me.weekly)+'. Reduce the week before submitting.</div>';
+  else msg.innerHTML='';
+});
+
+function currentTarget(me){
+  const el=eligibleWeeks(me),open=el.filter(x=>!x.st||x.st==='draft');
+  return ui.newWeek||((open[open.length-1]||el[el.length-1]).we);
+}
+function saveDraft(){
+  const me=user(session.user);if(me.pay!=='hourly')return null;
+  const target=currentTarget(me);
+  let ts=S.timesheets.find(x=>x.user===me.id&&x.we===target);
+  if(!ts){ts={id:'TS-'+me.id+'-'+target,user:me.id,we:target,entity:me.entity,stream:null,customer:null,notes:'',draftHours:[0,0,0,0,0]};
+    S.timesheets.push(ts);record(ts.id,'created',me.id,{})}
+  if(statusOf(ts.id)!=='draft')return ts;
+  const hrs=ts.draftHours||[0,0,0,0,0];
+  document.querySelectorAll('[data-h]').forEach(v=>hrs[+v.dataset.h]=parseFloat(v.value)||0);
+  ts.draftHours=hrs;
+  const s=$('#f-stream'),c=$('#f-cust'),n=$('#f-notes');
+  if(s)ts.stream=s.value;if(c)ts.customer=c.value||null;if(n)ts.notes=n.value;
+  return ts;
+}
+function trySubmit(){
+  const me=user(session.user),ts=saveDraft(),msg=$('#capMsg');
+  const st=streamOf(ts),cap=me.daily||8,hrs=ts.draftHours,tot=hrs.reduce((a,b)=>a+b,0);
+  const bad=s=>{msg.innerHTML='<div class="note bad">'+s+'</div>'};
+  if(st.cust==='required'&&!ts.customer)return bad('<b>Customer required.</b> '+esc(st.name)+' work must name a customer.');
+  if(tot<=0)return bad('<b>No hours.</b> Enter at least one day.');
+  if(hrs.some(h=>h>cap))return bad('<b>Over the daily cap.</b> A day cannot exceed '+H(cap)+' hours.');
+  if(tot>me.weekly)return bad('<b>Over the weekly cap.</b> '+H(tot)+' against '+H(me.weekly)+'.');
+  const win=windowOf(ts.we);
+  if(win.state==='locked')return bad('<b>Locked.</b> This week closed on '+fDY(win.lock)+'. Ask payroll to reopen it.');
+  const late=win.state==='late';
+  const lr=$('#f-late')?$('#f-late').value.trim():'';
+  if(late&&lr.length<5)return bad('<b>Reason required.</b> This week is past its cutoff \u2014 say why it is late.');
+  ui.modal={kind:'submit',ts,total:tot,late,reason:late?lr:null};render();
+}
+function doAction(kind,me){
+  const m=ui.modal;
+  if(kind==='submit'){const ts=m.ts;
+    record(ts.id,'submitted',me.id,{hours:ts.draftHours.slice(),total:m.total,stream:ts.stream,customer:ts.customer,
+      caps:{weekly:me.weekly,daily:me.daily||8},late:m.late,lateReason:m.reason});
+    notify(me.mgr,me.name+' submitted the week ending '+fD(P(ts.we))+'.',{tab:'queue',filter:'pending',sel:ts.id});
+    ui.modal=null;ui.sel=ts.id;ui.tab='mine';ui.newWeek=null;
+    toast('Submitted to '+uName(me.mgr)+'.');return render()}
+  if(kind==='return'){const r=$('#m-reason').value.trim();
+    if(r.length<5){$('#m-err').textContent='Give a reason they can act on.';return}
+    record(m.id,'returned',me.id,{reason:r});
+    notify(m.owner,me.name+' returned your week ending '+fD(P(m.we))+'.',{tab:'new',week:m.we,sel:m.id});
+    ui.modal=null;ui.sel=m.id;toast('Returned. The submission stays in the trail.');return render()}
+  if(kind==='batch'){const batch='BA-'+Date.now().toString(36).toUpperCase();
+    m.ids.forEach(id=>{const ts=S.timesheets.find(x=>x.id===id),rt=rateAsOf(S.rates,ts.user,ts.we);
+      const tot=lastEv(id,'submitted').payload.total;
+      record(id,'approved',me.id,{rate:rt?rt.hourly:0,rateFrom:rt?rt.from:null,total:tot,
+        amount:+((rt?rt.hourly:0)*tot).toFixed(2),batch,override:false,comment:null});
+      notify(ts.user,me.name+' approved your week ending '+fD(P(ts.we))+'.',{tab:'mine',sel:ts.id})});
+    ui.modal=null;ui.picked={};ui.sel=m.ids[0];
+    toast(m.ids.length+' approved in batch '+batch+'.');return render()}
+  if(kind==='override'){const c=$('#m-reason').value.trim();
+    if(c.length<5){$('#m-err').textContent='An override needs a comment.';return}
+    const ts=m.ts,rt=rateAsOf(S.rates,ts.user,ts.we),tot=lastEv(ts.id,'submitted').payload.total;
+    record(ts.id,'approved',me.id,{rate:rt?rt.hourly:0,rateFrom:rt?rt.from:null,total:tot,
+      amount:+((rt?rt.hourly:0)*tot).toFixed(2),batch:'OV-'+Date.now().toString(36).toUpperCase(),override:true,comment:c});
+    notify(user(ts.user).mgr,me.name+' override-approved '+uName(ts.user)+'\u2019s week ending '+fD(P(ts.we))+'.',{tab:'queue',filter:'approved',sel:ts.id});
+    notify(ts.user,'Your week ending '+fD(P(ts.we))+' was approved by payroll.',{tab:'mine',sel:ts.id});
+    ui.modal=null;ui.sel=ts.id;toast('Override recorded.');return render()}
+  if(kind==='process'){const batch='PB-'+Date.now().toString(36).toUpperCase();
+    m.ids.forEach(id=>{const ts=S.timesheets.find(x=>x.id===id),sn=snapOf(id),run=runForWeek(ts.we);
+      record(id,'processed',me.id,{run:run.id,runLabel:run.label+' \u00b7 '+run.year,
+        account:ui.accts[id]||accountFor(streamOf(ts),user(ts.user).fn),amount:sn.amount,batch});
+      notify(ts.user,'Your week ending '+fD(P(ts.we))+' is in the '+run.label+' pay run.',{tab:'mine',sel:ts.id})});
+    ui.modal=null;ui.picked={};ui.accts={};
+    toast(m.ids.length+' marked processed in '+batch+'.');return render()}
+  if(kind==='chase'){
+    S.chases.push({id:nid('c'),at:new Date().toISOString(),by:me.id,target:m.target,
+      kind:user(m.target).role==='manager'?'manager':'staff'});
+    const tgt=user(m.target);
+    const openW=tgt.pay==='hourly'?eligibleWeeks(tgt).filter(x=>(!x.st||x.st==='draft')&&x.w.state!=='future'):[];
+    notify(m.target,me.name+' sent you a reminder about an outstanding timesheet.',
+      tgt.role==='manager'?{tab:'queue',filter:'pending'}
+      :openW.length?{tab:'new',week:openW[openW.length-1].we}:{tab:'mine'});
+    ui.modal=null;toast('In-app notification sent \u00b7 reminder email triggered. Email delivery is outside this demo.');return render()}
+  if(kind==='raise'){const v=parseFloat($('#e-rate').value),from=$('#e-from').value;
+    if(!(v>0)||!from){$('#m-err').textContent='Enter a rate and a start date.';return}
+    S.rates.push({id:nid('rt'),user:m.user,hourly:v,from});
+    S.adminLog.push({id:nid('al'),at:new Date().toISOString(),actor:me.id,user:m.user,
+      text:'Rate row added: '+M(v)+'/h in force from '+fDY(P(from))+'.'});
+    notify(m.user,'Your rate changes to '+M(v)+'/h from '+fDY(P(from))+'.',{tab:'dash'});
+    toast('Rate row added. Past weeks are untouched \u2014 check Reports.');return render()}
+  if(kind==='saveUser'){const u=user(m.user),ent=$('#e-ent').value,fn=$('#e-fn').value,
+      weekly=parseFloat($('#e-weekly').value),daily=parseFloat($('#e-daily').value),mgr=$('#e-mgr').value,ch=[];
+    if(ent!==u.entity)ch.push('entity \u2192 '+ENTITIES.find(e=>e.id===ent).name);
+    if(fn!==u.fn)ch.push('function \u2192 '+fn);
+    if(weekly!==u.weekly)ch.push('weekly cap \u2192 '+H(weekly)+'h');
+    if(daily!==(u.daily||8))ch.push('daily cap \u2192 '+H(daily)+'h');
+    if(mgr!==u.mgr)ch.push('manager \u2192 '+uName(mgr));
+    Object.assign(u,{entity:ent,fn,weekly,daily:daily===8?null:daily,mgr});
+    if(ch.length)S.adminLog.push({id:nid('al'),at:new Date().toISOString(),actor:me.id,user:u.id,text:ch.join(', ')});
+    toast(ch.length?(user(mgr).fn!==fn?'Saved. Cross-department assignment flagged on the record.':'Saved.'):'No changes.');
+    ui.modal=null;return render()}
+}
+function doCsv(kind,me){
+  if(kind==='mine'){const rows=[['Week ending','Stream','Customer','Hours','Status','Rate held','Pay','Pay run','Late']];
+    sheetsOf(me.id).forEach(t=>{const sn=snapOf(t.id),pr=procOf(t.id),s=lastEv(t.id,'submitted');
+      rows.push([t.we,streamOf(t).name,t.customer||'',H(totOf(t)),statusOf(t.id),sn?sn.rate:'',sn?sn.amount:'',
+        pr?pr.runLabel:'',s&&s.payload.late?'yes':''])});
+    return csv(rows,'my-timesheets.csv')}
+  if(kind==='approved'){const rows=[['Person','Week ending','Hours','Rate held','Pay','Approved by','Approved at','Batch','Override']];
+    S.timesheets.filter(t=>user(t.user).mgr===me.id&&['approved','processed'].includes(statusOf(t.id)))
+      .sort((a,b)=>a.we<b.we?1:-1).forEach(t=>{const sn=snapOf(t.id),a=lastEv(t.id,'approved');
+      rows.push([uName(t.user),t.we,H(sn.total),sn.rate,sn.amount,uName(a.actor),a.at,sn.batch||'',sn.override?'yes':''])});
+    return csv(rows,'approved-timesheets.csv')}
+  const rows=[['Entity','Week ending','Person','Function','Stream','Customer','Hours','Rate held','Rate in force from',
+    'Pay','Expense head','Account name','Pay run','Payday','Approved by','Approved at','Override','Processed by','Batch']];
+  S.timesheets.filter(t=>t.entity===me.entity&&['approved','processed'].includes(statusOf(t.id)))
+    .sort((a,b)=>a.we<b.we?1:-1).forEach(t=>{const sn=snapOf(t.id),pr=procOf(t.id),
+      a=lastEv(t.id,'approved'),p=lastEv(t.id,'processed'),run=runForWeek(t.we);
+    rows.push([ENTITIES.find(e=>e.id===t.entity).name,t.we,uName(t.user),user(t.user).fn,streamOf(t).name,t.customer||'',
+      H(sn.total),sn.rate,sn.rateFrom||'',sn.amount,pr?pr.account:'',pr?ACCOUNTS[pr.account]:'',run.label+' '+run.year,
+      run.payday,uName(a.actor),a.at,sn.override?'yes':'',p?uName(p.actor):'',pr?pr.batch:''])});
+  return csv(rows,'payroll-report.csv');
+}
+
+seed();render();
+})();
+</script>
+</body>
+</html>

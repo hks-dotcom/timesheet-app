@@ -8,7 +8,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { addDays, dayOfWeek, fromUTCDate } from "../lib/dateutil";
+import { addDays, fromUTCDate, mostRecentFriday } from "../lib/dateutil";
 import { federalHolidaysForYears } from "../lib/holidays";
 import { getMostRecentPastPayRun, getPayRunForWeekEnding, type PayRun } from "../lib/paycalendar";
 
@@ -75,12 +75,6 @@ function maxDT(a: string, b: string): string {
 
 function minDT(a: string, b: string): string {
   return new Date(a).getTime() <= new Date(b).getTime() ? a : b;
-}
-
-function mostRecentFriday(now: Date): string {
-  let iso = fromUTCDate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())));
-  while (dayOfWeek(iso) !== 5) iso = addDays(iso, -1);
-  return iso;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,7 +262,11 @@ interface CustomerCsvRow {
 }
 
 function loadCustomersFromCsv(): CustomerCsvRow[] {
-  const csvPath = path.join(__dirname, "data", "customers.csv");
+  // process.cwd(), not __dirname: this file is bundled by Next.js/Turbopack
+  // when imported from app code, and a bundled __dirname resolves to a
+  // virtual path with no filesystem backing. cwd is the project root both
+  // under `tsx` (db:seed) and under `next dev`/`next start`.
+  const csvPath = path.join(process.cwd(), "db", "data", "customers.csv");
   const raw = fs.readFileSync(csvPath, "utf8");
   const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
   const [header, ...rows] = lines;

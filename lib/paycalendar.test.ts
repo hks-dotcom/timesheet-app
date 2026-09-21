@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getMostRecentPastPayRun, getPayRun, getPayRunForWeekEnding } from "./paycalendar";
+import { getMostRecentPastPayRun, getPayRun, getPayRunForLateSubmission, getPayRunForWeekEnding } from "./paycalendar";
 
 interface Case {
   scheduled: string;
@@ -69,6 +69,34 @@ for (const c of pastRunCases) {
     const run = getMostRecentPastPayRun(c.today);
     console.log(
       `  as of ${c.today} -> most recent past payday ${run.payday} (expected ${c.runPayday})`,
+    );
+    assert.equal(run.payday, c.runPayday);
+  });
+}
+
+interface LateCase {
+  submittedOn: string;
+  runPayday: string;
+}
+
+// The 2026-09-30 run has cutoff 2026-09-25; the 2026-10-15 run has cutoff
+// 2026-10-09 (see `cases` above). A late submission belongs to the first
+// run whose cutoff is on or after the day it was actually submitted —
+// not the run its week ending would normally have landed in.
+const lateCases: LateCase[] = [
+  // On the cutoff day itself: still belongs to that run.
+  { submittedOn: "2026-09-25", runPayday: "2026-09-30" },
+  // The day after a cutoff: rolls into the next run.
+  { submittedOn: "2026-09-26", runPayday: "2026-10-15" },
+  { submittedOn: "2026-10-09", runPayday: "2026-10-15" },
+  { submittedOn: "2026-10-10", runPayday: "2026-10-30" },
+];
+
+for (const c of lateCases) {
+  test(`late submission on ${c.submittedOn} belongs to the ${c.runPayday} run`, () => {
+    const run = getPayRunForLateSubmission(c.submittedOn);
+    console.log(
+      `  submitted ${c.submittedOn} -> run payday ${run.payday} (expected ${c.runPayday})`,
     );
     assert.equal(run.payday, c.runPayday);
   });
