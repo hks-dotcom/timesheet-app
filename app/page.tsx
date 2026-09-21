@@ -1,15 +1,11 @@
 import { getPool } from "@/lib/db";
 import { fromUTCDate } from "@/lib/dateutil";
 import { getUpcomingPayRuns } from "@/lib/paycalendar";
+import { STATUSES, statusFromLatestEventType, type Status } from "@/lib/status";
 
 // This page hits the database on every request — there is nothing to
 // statically cache.
 export const dynamic = "force-dynamic";
-
-interface StatusRow {
-  type: string;
-  count: string;
-}
 
 async function getCounts() {
   const pool = getPool();
@@ -25,21 +21,24 @@ async function getCounts() {
   };
 }
 
-// Status is not a stored column — it is a projection over events: the type
-// of the most recent event for each timesheet.
-async function getStatusBreakdown(): Promise<StatusRow[]> {
+// Status is not a stored column — it is a projection over events: the
+// latest event type for each timesheet, mapped through lib/status.ts.
+// Every status is always represented, including at 0.
+async function getStatusBreakdown(): Promise<Record<Status, number>> {
   const pool = getPool();
-  const result = await pool.query<StatusRow>(`
-    select latest.type, count(*)::text as count
+  const result = await pool.query<{ type: string }>(`
+    select latest.type
     from (
       select distinct on (timesheet_id) timesheet_id, type
       from events
       order by timesheet_id, at desc, id desc
     ) latest
-    group by latest.type
-    order by latest.type
   `);
-  return result.rows;
+  const counts = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
+  for (const row of result.rows) {
+    counts[statusFromLatestEventType(row.type)]++;
+  }
+  return counts;
 }
 
 export default async function Home() {
@@ -88,10 +87,10 @@ export default async function Home() {
           </tr>
         </thead>
         <tbody>
-          {statusBreakdown.map((row) => (
-            <tr key={row.type}>
-              <td>{row.type}</td>
-              <td>{row.count}</td>
+          {STATUSES.map((status) => (
+            <tr key={status}>
+              <td>{status}</td>
+              <td>{statusBreakdown[status]}</td>
             </tr>
           ))}
         </tbody>

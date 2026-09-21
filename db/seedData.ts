@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { addDays, dayOfWeek, fromUTCDate } from "../lib/dateutil";
 import { federalHolidaysForYears } from "../lib/holidays";
-import { getPayRunForWeekEnding, type PayRun } from "../lib/paycalendar";
+import { getMostRecentPastPayRun, getPayRunForWeekEnding, type PayRun } from "../lib/paycalendar";
 
 // ---------------------------------------------------------------------------
 // deterministic PRNG (mulberry32) — fixed seed so two runs are identical.
@@ -493,6 +493,10 @@ export function buildSeed(now: Date = new Date()): SeedResult {
   }
 
   const todayISO = fromUTCDate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())));
+  // The most recently paid run: its weeks stay approved, not processed,
+  // until payroll confirms it. Computed once, up front, so it's the same
+  // pay run for every person regardless of where they fall in the roster.
+  const mostRecentPastPayRun = getMostRecentPastPayRun(todayISO);
 
   const nextTimesheetId = makeIdGen();
   const nextEventId = makeIdGen();
@@ -591,7 +595,14 @@ export function buildSeed(now: Date = new Date()): SeedResult {
 
       // status bucket
       let bucket: "draft" | "submitted" | "approved" | "processed";
-      if (isReturned || isOverride || isLate) {
+      if (payRun.payday === mostRecentPastPayRun.payday) {
+        // Payroll hasn't confirmed the most recently paid run yet — every
+        // week that belongs to it stays approved, never processed, with
+        // no exceptions (including the deliberate scenarios below: their
+        // narrative still runs up through the approved event, it just
+        // doesn't get a processed event yet either).
+        bucket = "approved";
+      } else if (isReturned || isOverride || isLate) {
         bucket = "processed";
       } else if (todayISO >= payRun.payday) {
         bucket = "processed";

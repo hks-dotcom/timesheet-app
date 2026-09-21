@@ -110,3 +110,19 @@ export function getPayRunForWeekEnding(friday: string): PayRun {
   // unreachable: iteratePayRuns is infinite
   throw new Error("no pay run found");
 }
+
+// The pay run with the most recent payday that is on or before `today`.
+// Paydays are chronological across iteratePayRuns, so the first one whose
+// payday is after `today` means the previous one we saw was the answer.
+export function getMostRecentPastPayRun(today: string): PayRun {
+  const anchor = addDays(today, -45); // safety margin: look a bit earlier
+  const year = Number(anchor.slice(0, 4));
+  const monthIndex0 = Number(anchor.slice(5, 7)) - 1;
+  let best: PayRun | null = null;
+  for (const run of iteratePayRuns(year, monthIndex0)) {
+    if (compareISO(run.payday, today) > 0) break;
+    best = run;
+  }
+  if (!best) throw new Error("no past pay run found");
+  return best;
+}

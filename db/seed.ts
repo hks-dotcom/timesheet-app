@@ -13,6 +13,7 @@
 // DEFAULT so that's allowed) — nothing here depends on RETURNING order.
 
 import { Pool, type PoolClient } from "@neondatabase/serverless";
+import { STATUSES, statusFromLatestEventType } from "../lib/status";
 import { buildSeed, summarize, type SeedResult } from "./seedData";
 
 async function insertBatch(
@@ -296,6 +297,33 @@ async function runVerifications(client: PoolClient) {
   }
 }
 
+// Unlike the checks above, this one must be NON-zero: every status the app
+// can show should actually have at least one timesheet in it, or a queue
+// screen would look broken on arrival. Uses the same lib/status.ts mapping
+// every screen uses — not a separate SQL re-implementation of it.
+async function runStatusCoverageCheck(client: PoolClient) {
+  console.log("\nStatus coverage (must be non-zero):");
+
+  const result = await client.query<{ type: string }>(`
+    select latest.type
+    from (
+      select distinct on (timesheet_id) timesheet_id, type
+      from events
+      order by timesheet_id, at desc, id desc
+    ) latest
+  `);
+  const counts = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<(typeof STATUSES)[number], number>;
+  for (const row of result.rows) {
+    counts[statusFromLatestEventType(row.type)]++;
+  }
+
+  const allNonZero = STATUSES.every((s) => counts[s] > 0);
+  const breakdown = STATUSES.map((s) => `${s}=${counts[s]}`).join(", ");
+  console.log(
+    `  [${allNonZero ? "PASS" : "FAIL"}] each of draft, submitted, approved and processed has at least one timesheet: ${breakdown}`,
+  );
+}
+
 async function proveAppendOnly(client: PoolClient) {
   console.log("\nAppend-only trigger proof (events table):");
 
@@ -337,6 +365,7 @@ async function main() {
     console.log(summarize(seed));
     await printRowCounts(client);
     await runVerifications(client);
+    await runStatusCoverageCheck(client);
     await proveAppendOnly(client);
   } finally {
     client.release();
