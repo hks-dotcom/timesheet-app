@@ -8,6 +8,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { ACCOUNTS, resolveExpenseAccount, type AccountRow } from "../lib/accounts";
 import { addDays, fromUTCDate, mostRecentFriday } from "../lib/dateutil";
 import { federalHolidaysForYears } from "../lib/holidays";
 import { getMostRecentPastPayRun, getPayRunForWeekEnding, type PayRun } from "../lib/paycalendar";
@@ -88,10 +89,6 @@ export interface EntityRow {
   domain: string;
 }
 
-export interface AccountRow {
-  code: string;
-  name: string;
-}
 
 export interface StreamRow {
   id: number;
@@ -208,23 +205,6 @@ const WEEKS = 104;
 // ---------------------------------------------------------------------------
 // static reference data
 // ---------------------------------------------------------------------------
-
-const ACCOUNTS: AccountRow[] = [
-  { code: "5000", name: "COGS — Delivery Labour" },
-  { code: "5020", name: "COGS — Support" },
-  { code: "6000", name: "S&M — People" },
-  { code: "6100", name: "R&D — People" },
-  { code: "6200", name: "G&A — People" },
-];
-
-const FUNCTION_ACCOUNT: Record<string, string> = {
-  Delivery: "5000",
-  "Solutions & Support": "5020",
-  "Product Engineering": "6100",
-  "R&D": "6100",
-  "Sales & Marketing": "6000",
-  "G&A": "6200",
-};
 
 const ENTITY_DEFS = [
   { key: "corethread", name: "CoreThread", domain: "corethread" },
@@ -710,8 +690,11 @@ export function buildSeed(now: Date = new Date()): SeedResult {
 
       if (bucket === "approved") continue;
 
-      // processed
-      const expenseAccount = stream.billable ? (stream.defaultAccount as string) : FUNCTION_ACCOUNT[u.function];
+      // processed — amount comes only from the two snapshots already
+      // taken: the hours on the submitted event and the rate on the
+      // approved event, never recomputed from the live rate table.
+      const expenseAccount = resolveExpenseAccount(stream, u.function);
+      const amount = Math.round(roundedTotal * rate.hourly * 100) / 100;
       const processedAt = maxDT(atTime(payRun.payday, 10, 0), shiftHours(approvedAt, 24));
       events.push({
         id: nextEventId(),
@@ -719,7 +702,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         type: "processed",
         actorId: payrollAdminId,
         at: processedAt,
-        payload: { expenseAccount, payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff } },
+        payload: { expenseAccount, payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff }, amount },
       });
     }
 

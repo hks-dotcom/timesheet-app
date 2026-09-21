@@ -209,6 +209,7 @@ export interface ApprovedPayload {
 export interface ProcessedPayload {
   expenseAccount: string;
   payRun: { payday: string; due: string; cutoff: string };
+  amount: number;
 }
 
 export interface TimesheetSummary {
