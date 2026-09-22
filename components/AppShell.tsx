@@ -122,7 +122,7 @@ export async function AppShell({
               </Link>
             ))}
           </nav>
-          <div className="who">
+          <div className="who whoWrap">
             <NotificationBell notifications={notifications} role={me.role} />
             <div className="nm">
               {me.name}

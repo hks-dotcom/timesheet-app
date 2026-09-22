@@ -54,25 +54,32 @@ export function NotificationBell({ notifications, role }: { notifications: Notif
   }
 
   return (
-    <div className="bell">
-      <button className="bell-btn" type="button" onClick={toggle} aria-label="Notifications">
-        Notifications
-        {unread > 0 && <span className="bell-count">{unread}</span>}
+    <>
+      <button className="bell" type="button" onClick={toggle} aria-label="Notifications">
+        {/* The mock's bell glyph, inline so there is no icon dependency. */}
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+        </svg>
+        {/* No badge at zero — the mock renders the <b> only when unread. */}
+        {unread > 0 && <b>{unread}</b>}
       </button>
       {open && (
-        <div className="bell-dropdown">
+        <div className="drop">
           {items.length === 0 ? (
-            <div className="bell-empty">No notifications yet.</div>
+            <div className="empty">No notifications.</div>
           ) : (
             items.map((n) => (
-              <button key={n.id} className={`bell-item ${n.readAt === null ? "unread" : ""}`} type="button" onClick={() => pick(n)}>
+              <button key={n.id} className={`n${n.readAt === null ? " unread" : ""}`} type="button" onClick={() => pick(n)}>
                 {n.text}
-                <span className="muted">{formatDateTime(n.at)}</span>
+                <small>
+                  {formatDateTime(n.at)} &middot; open
+                </small>
               </button>
             ))
           )}
         </div>
       )}
-    </div>
+    </>
   );
 }
