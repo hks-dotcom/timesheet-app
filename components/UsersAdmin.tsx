@@ -39,8 +39,7 @@ export function UsersAdmin({
               <th>Function</th>
               <th>Pay type</th>
               <th className="r">Rate</th>
-              <th className="r">Weekly</th>
-              <th className="r">Daily</th>
+              <th className="r">Caps (week / day)</th>
               <th>Manager</th>
               <th>End date</th>
               <th>Contract</th>
@@ -64,8 +63,17 @@ export function UsersAdmin({
                   <td>{u.function}</td>
                   <td>{u.payType === "hourly" ? "Hourly" : "Salaried"}</td>
                   <td className="r num">{u.currentRate !== null ? formatMoney(u.currentRate) : <span className="muted">—</span>}</td>
-                  <td className="r num">{u.payType === "hourly" ? u.weeklyCap.toFixed(2) : <span className="muted">—</span>}</td>
-                  <td className="r num">{u.payType === "hourly" ? u.dailyCap.toFixed(2) : <span className="muted">—</span>}</td>
+                  <td className="r num">
+                    {u.payType === "hourly" ? (
+                      <>
+                        {u.weeklyCap.toFixed(2)} / {u.dailyCap.toFixed(2)}
+                        <br />
+                        <span className="muted" style={{ fontSize: 11 }}>{u.capsContractRef ?? "\u2014"}</span>
+                      </>
+                    ) : (
+                      <span className="muted">&mdash;</span>
+                    )}
+                  </td>
                   <td>{u.managerName ?? <span className="muted">—</span>}</td>
                   <td>{u.endDate ? formatDateLong(u.endDate) : <span className="muted">—</span>}</td>
                   <td className="muted" style={{ fontSize: 11.5 }}>
@@ -131,6 +139,12 @@ function EditUserModal({
   const [fn, setFn] = useState(user.function);
   const [weeklyCap, setWeeklyCap] = useState(user.weeklyCap);
   const [dailyCap, setDailyCap] = useState(user.dailyCap);
+  // (b) Caps are contract terms now, so changing them needs the
+  // paperwork. Only asked for once a value actually differs; the server
+  // rejects the change without it either way.
+  const [capsContractRef, setCapsContractRef] = useState("");
+  const [capsSignedOn, setCapsSignedOn] = useState("");
+  const capsChanged = weeklyCap !== user.weeklyCap || dailyCap !== user.dailyCap;
   const [managerId, setManagerId] = useState<number | "">(user.managerId ?? "");
 
   const [saveState, saveDispatch, savePending] = useActionState<AdminState, FormData>(saveUserAction, null);
@@ -161,6 +175,10 @@ function EditUserModal({
               fd.set("function", fn);
               fd.set("weeklyCap", String(weeklyCap));
               fd.set("dailyCap", String(dailyCap));
+              if (capsChanged) {
+                fd.set("capsContractRef", capsContractRef);
+                fd.set("capsSignedOn", capsSignedOn);
+              }
               if (managerId !== "") fd.set("managerId", String(managerId));
               saveDispatch(fd);
             }}
@@ -217,6 +235,30 @@ function EditUserModal({
                 </select>
               </label>
             </div>
+            {capsChanged && (
+              <>
+                <div className="note" style={{ marginTop: 10 }}>
+                  <b>Caps are contract terms.</b> Changing them appends a new row citing the contract that agreed them &mdash; the
+                  caps already snapshotted on filed weeks never move. Currently {user.weeklyCap.toFixed(2)}h a week,{" "}
+                  {user.dailyCap.toFixed(2)}h a day{user.capsContractRef ? ` (${user.capsContractRef})` : ""}.
+                </div>
+                <div className="row" style={{ marginTop: 10 }}>
+                  <label className="field">
+                    <span>Caps contract reference</span>
+                    <input
+                      type="text"
+                      placeholder="CTR-2026-0000"
+                      value={capsContractRef}
+                      onChange={(e) => setCapsContractRef(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Caps contract signed on</span>
+                    <input type="date" value={capsSignedOn} onChange={(e) => setCapsSignedOn(e.target.value)} />
+                  </label>
+                </div>
+              </>
+            )}
             {saveState && "error" in saveState && <div className="note bad">{saveState.error}</div>}
             {saveState && "ok" in saveState && <div className="note">Saved.</div>}
           </form>

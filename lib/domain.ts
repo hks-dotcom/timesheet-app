@@ -136,6 +136,30 @@ export function latestContractTerm(rows: ContractTermRow[]): ContractTermRow | n
   return rows.reduce((latest, r) => (r.recordedAt > latest.recordedAt ? r : latest));
 }
 
+// ---------------------------------------------------------------------------
+// caps in force (item b)
+// ---------------------------------------------------------------------------
+
+export interface CapTermRow {
+  weeklyCap: number;
+  dailyCap: number;
+  contractRef: string;
+  recordedAt: string;
+}
+
+// The caps IN FORCE for a person: the latest recorded cap_terms row,
+// exactly like latestContractTerm — an append-only log, so the newest
+// thing anyone recorded wins. This is the ONE function that answers
+// "what are this person's caps"; nothing reads users.weekly_cap /
+// users.daily_cap any more, and a cap can never be in force without the
+// contract reference that agreed it. Returns null only for someone with
+// no cap_terms row at all (the seed gives every hourly person one, and
+// db/seed.ts checks it).
+export function latestCapTerm(rows: CapTermRow[]): CapTermRow | null {
+  if (rows.length === 0) return null;
+  return rows.reduce((latest, r) => (r.recordedAt > latest.recordedAt ? r : latest));
+}
+
 // A week is submittable only if its Monday is on or before the end date in
 // force. `weekMonday` is the week's Monday (weekEnding - 4 days).
 export function weekAllowedByEndDate(weekMonday: string, endDate: string | null): boolean {

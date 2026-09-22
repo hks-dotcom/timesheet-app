@@ -18,7 +18,8 @@ import { buildSeed, summarize } from "./seedData";
 import { writeSeed } from "./seedWrite";
 
 const TABLES = [
-  "entities", "users", "rates", "contract_terms", "customers", "streams", "accounts",
+  "entities", "users", "rates", "contract_terms",
+  "cap_terms", "customers", "streams", "accounts",
   "holidays", "time_off", "timesheets", "events", "notifications",
   "chases", "admin_log", "demo_meta",
 ];
@@ -187,6 +188,26 @@ async function runVerifications(client: PoolClient) {
              )
         ) q
       `,
+    },
+    {
+      // (b) Caps in force must always be traceable to a contract.
+      name: "active hourly users with no cap_terms row",
+      sql: `
+        select count(*) from users u
+        where u.pay_type = 'hourly' and u.active = true
+          and not exists (select 1 from cap_terms c where c.user_id = u.id)
+      `,
+    },
+    {
+      // The retired columns must stay empty, or a reader that reached
+      // for them by mistake would get a plausible-looking wrong answer
+      // instead of nothing.
+      name: "users still carrying a value in the retired weekly_cap / daily_cap columns",
+      sql: "select count(*) from users where weekly_cap is not null or daily_cap is not null",
+    },
+    {
+      name: "submitted events with no capsContractRef",
+      sql: "select count(*) from events where type = 'submitted' and coalesce(btrim(payload->>'capsContractRef'), '') = ''",
     },
     {
       name: "timesheets whose customer belongs to a different entity than the timesheet",

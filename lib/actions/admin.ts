@@ -55,6 +55,8 @@ export async function saveUserCore(me: SessionUser, formData: FormData): Promise
   const userFunction = String(formData.get("function") ?? "");
   const weeklyCap = Number(formData.get("weeklyCap"));
   const dailyCap = Number(formData.get("dailyCap"));
+  const capsContractRef = String(formData.get("capsContractRef") ?? "").trim();
+  const capsSignedOn = String(formData.get("capsSignedOn") ?? "");
   const managerIdRaw = formData.get("managerId");
   const managerId = managerIdRaw ? Number(managerIdRaw) : null;
 
@@ -72,14 +74,23 @@ export async function saveUserCore(me: SessionUser, formData: FormData): Promise
       entity_id: string;
       name: string;
       function: string;
-      weekly_cap: string;
-      daily_cap: string;
+      weekly_cap: string | null;
+      daily_cap: string | null;
+      caps_contract_ref: string | null;
+      pay_type: string;
       manager_id: string | null;
       timesheet_count: string;
     }>(
-      `select u.entity_id, u.name, u.function, u.weekly_cap, u.daily_cap, u.manager_id,
+      // Caps come from cap_terms, not from the retired users columns.
+      `select u.entity_id, u.name, u.function, u.manager_id, u.pay_type,
+        caps.weekly_cap, caps.daily_cap, caps.contract_ref as caps_contract_ref,
         (select count(*) from timesheets t where t.user_id = u.id) as timesheet_count
-       from users u where u.id = $1`,
+       from users u
+       left join lateral (
+         select ct.weekly_cap, ct.daily_cap, ct.contract_ref from cap_terms ct
+          where ct.user_id = u.id order by ct.recorded_at desc, ct.id desc limit 1
+       ) caps on true
+       where u.id = $1`,
       [userId],
     );
     const row = result.rows[0];
@@ -105,19 +116,42 @@ export async function saveUserCore(me: SessionUser, formData: FormData): Promise
       }
     }
 
+    // (b) A cap change is an append to cap_terms citing the contract
+    // that agreed it — never an in-place edit, and never without the
+    // paperwork. Checked before any write, so a rejected save leaves
+    // cap_terms, users and admin_log all untouched.
+    const priorWeekly = row.weekly_cap === null ? null : Number(row.weekly_cap);
+    const priorDaily = row.daily_cap === null ? null : Number(row.daily_cap);
+    const capsChanged = weeklyCap !== priorWeekly || dailyCap !== priorDaily;
+    if (capsChanged) {
+      if (row.pay_type !== "hourly") throw new Error("Only hourly people have weekly and daily caps.");
+      if (!capsContractRef) throw new Error("Changing the caps needs the contract reference that agreed them.");
+      if (!capsSignedOn) throw new Error("Changing the caps needs the date that contract was signed.");
+    }
+
     const changes: string[] = [];
     if (entityId !== Number(row.entity_id)) changes.push(`entity -> ${entityId}`);
     if (userFunction !== row.function) changes.push(`function -> ${userFunction}`);
-    if (weeklyCap !== Number(row.weekly_cap)) changes.push(`weekly cap -> ${weeklyCap.toFixed(2)}h`);
-    if (dailyCap !== Number(row.daily_cap)) changes.push(`daily cap -> ${dailyCap.toFixed(2)}h`);
+    if (capsChanged) {
+      changes.push(`caps -> ${weeklyCap.toFixed(2)}h week, ${dailyCap.toFixed(2)}h day (${capsContractRef})`);
+    }
     const priorManagerId = row.manager_id === null ? null : Number(row.manager_id);
     if (managerId !== priorManagerId) changes.push(`manager -> ${managerId ?? "none"}`);
 
     if (changes.length > 0) {
-      await client.query(
-        "update users set entity_id = $1, function = $2, weekly_cap = $3, daily_cap = $4, manager_id = $5 where id = $6",
-        [entityId, userFunction, weeklyCap, dailyCap, managerId, userId],
-      );
+      await client.query("update users set entity_id = $1, function = $2, manager_id = $3 where id = $4", [
+        entityId,
+        userFunction,
+        managerId,
+        userId,
+      ]);
+      if (capsChanged) {
+        await client.query(
+          `insert into cap_terms (user_id, weekly_cap, daily_cap, contract_ref, contract_signed_on, recorded_by)
+           values ($1, $2, $3, $4, $5, $6)`,
+          [userId, weeklyCap, dailyCap, capsContractRef, capsSignedOn, me.id],
+        );
+      }
       await client.query("insert into admin_log (actor_id, user_id, text) values ($1, $2, $3)", [
         me.id,
         userId,

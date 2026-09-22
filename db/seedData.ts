@@ -116,8 +116,8 @@ export interface UserRow {
   payType: "hourly" | "salaried";
   function: string;
   managerId: number | null;
-  weeklyCap: number;
-  dailyCap: number;
+  // Caps are NOT here any more — they live in cap_terms (item b), so a
+  // cap can never be in force without the contract that agreed it.
   active: boolean;
 }
 
@@ -128,6 +128,16 @@ export interface RateRow {
   effectiveFrom: string;
   contractRef: string;
   contractSignedOn: string;
+}
+
+export interface SeedCapTermRow {
+  id: number;
+  userId: number;
+  weeklyCap: number;
+  dailyCap: number;
+  contractRef: string;
+  contractSignedOn: string;
+  recordedBy: number;
 }
 
 export interface ContractTermRow {
@@ -205,6 +215,7 @@ export interface SeedResult {
   users: UserRow[];
   rates: RateRow[];
   contractTerms: ContractTermRow[];
+  capTerms: SeedCapTermRow[];
   holidays: HolidayRow[];
   timeOff: TimeOffRow[];
   timesheets: TimesheetRow[];
@@ -536,8 +547,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       payType: u.payType,
       function: u.function,
       managerId: null, // backfilled below, once every user has an id
-      weeklyCap: u.weeklyCap,
-      dailyCap: u.dailyCap,
+
       active: u.active,
     });
   }
@@ -578,6 +588,26 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       contractSignedOn: addDays(anchor, -7 * (u.hireWeeksAgo ?? 0)),
       recordedBy: userIdByKey.get(PAYROLL_ADMIN_BY_ENTITY[u.entityKey])!,
       kind: "set",
+    });
+  }
+
+  // Caps traced to contracts (item b) — one initial cap_terms row per
+  // hourly person, recorded by their entity's payroll admin at hire
+  // time, citing the same contract their earliest rate row cites so the
+  // paperwork is consistent. Anchor-relative like everything else.
+  const nextCapTermId = makeIdGen();
+  const capTerms: SeedCapTermRow[] = [];
+  for (const u of ROSTER) {
+    if (u.payType !== "hourly" || !u.rateSchedule?.length) continue;
+    const firstRate = u.rateSchedule.reduce((a, b) => (a.weeksAgo >= b.weeksAgo ? a : b));
+    capTerms.push({
+      id: nextCapTermId(),
+      userId: userIdByKey.get(u.key)!,
+      weeklyCap: u.weeklyCap,
+      dailyCap: u.dailyCap,
+      contractRef: firstRate.contractRef,
+      contractSignedOn: addDays(anchor, -7 * firstRate.weeksAgo - 5),
+      recordedBy: userIdByKey.get(PAYROLL_ADMIN_BY_ENTITY[u.entityKey])!,
     });
   }
 
@@ -804,8 +834,11 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       const submittedPayload: Record<string, unknown> = {
         hours,
         totalHours: roundedTotal,
+        // The caps in force at submission, with the contract that
+        // agreed them — the same shape submitCore writes (item b).
         weeklyCap: u.weeklyCap,
         dailyCap: u.dailyCap,
+        capsContractRef: capTerms.find((c) => c.userId === userId)!.contractRef,
       };
       if (isLate) {
         submittedPayload.late = true;
@@ -1069,6 +1102,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     users,
     rates,
     contractTerms,
+    capTerms,
     holidays,
     timeOff,
     timesheets,
@@ -1094,6 +1128,7 @@ export function summarize(seed: SeedResult): string {
     ["users", seed.users.length],
     ["rates", seed.rates.length],
     ["contract_terms", seed.contractTerms.length],
+    ["cap_terms", seed.capTerms.length],
     ["holidays", seed.holidays.length],
     ["time_off", seed.timeOff.length],
     ["timesheets", seed.timesheets.length],

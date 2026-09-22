@@ -31,7 +31,8 @@ export async function ContributorDashboard({ me }: { me: SessionUser }) {
             <h2>{me.name}</h2>
             <p>
               {roleLabel(me.role)} &middot; {me.function} &middot; hourly at {formatMoney(currentRate?.hourly ?? 0)} &middot; caps{" "}
-              {formatHours(me.weeklyCap)}h a week, {formatHours(me.dailyCap)}h a day &middot; manager{" "}
+              {formatHours(me.weeklyCap)}h a week, {formatHours(me.dailyCap)}h a day
+              {me.capsContractRef ? ` (${me.capsContractRef})` : ""} &middot; manager{" "}
               {me.managerName ?? "—"}
             </p>
           </div>

@@ -25,6 +25,7 @@ import {
   blockedDaysFromRows,
   checkHardBlocks,
   describeViolation,
+  latestCapTerm,
   latestContractTerm,
   rateAsOf,
   sanitizeHours,
@@ -36,6 +37,7 @@ import {
 } from "../domain";
 import {
   getActiveCustomersForEntity,
+  getCapTermsForUser,
   getContractTermsForUser,
   getHolidaysByDate,
   getStreamsForEntity,
@@ -256,10 +258,19 @@ export async function submitCore(me: SessionUser, formData: FormData): Promise<F
   const [holidays, timeOff] = await Promise.all([getHolidaysByDate(dates), getTimeOffByDate(me.id, dates)]);
   const blocked = blockedDaysFromRows(weekEnding, holidays, timeOff);
 
+  // (b) Caps come from cap_terms, read through the one shared
+  // latestCapTerm, and are checked here rather than taken on trust from
+  // the session object — a cap change between page load and submit has
+  // to bite immediately. Someone with no cap_terms row at all cannot
+  // submit: no agreed caps means no agreed ceiling to check against.
+  const capTerms = await getCapTermsForUser(me.id);
+  const caps = latestCapTerm(capTerms);
+  if (!caps) return { error: "No agreed weekly and daily caps are on file for you. Ask your payroll admin." };
+
   const violations = checkHardBlocks({
     hours,
-    dailyCap: me.dailyCap,
-    weeklyCap: me.weeklyCap,
+    dailyCap: caps.dailyCap,
+    weeklyCap: caps.weeklyCap,
     stream,
     customerId,
     blocked,
@@ -291,8 +302,13 @@ export async function submitCore(me: SessionUser, formData: FormData): Promise<F
     const payload: Record<string, unknown> = {
       hours,
       totalHours: totalHours(hours),
-      weeklyCap: me.weeklyCap,
-      dailyCap: me.dailyCap,
+      // The caps in force at this moment, snapshotted with the contract
+      // that agreed them — so a later cap change can never make a filed
+      // week look non-compliant, and the reader can always see which
+      // paperwork the ceiling came from.
+      weeklyCap: caps.weeklyCap,
+      dailyCap: caps.dailyCap,
+      capsContractRef: caps.contractRef,
       late,
     };
     if (late) payload.reason = lateReason;

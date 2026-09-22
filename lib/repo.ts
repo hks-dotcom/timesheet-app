@@ -13,6 +13,7 @@ import {
   weekdayDates,
   windowOf,
   type BlockedDay,
+  type CapTermRow,
   type ContractTermRow,
   type DayKey,
   type Hours,
@@ -53,19 +54,39 @@ export interface SessionUser {
   function: string;
   managerId: number | null;
   managerName: string | null;
+  // The caps IN FORCE, read from cap_terms — never from users, which no
+  // longer holds them (item b). capsContractRef is the contract that
+  // agreed them, so a cap can never travel without its paperwork.
   weeklyCap: number;
   dailyCap: number;
+  capsContractRef: string | null;
   active: boolean;
 }
+
+// The latest recorded cap_terms row for a user, as a lateral join. Same
+// rule as lib/domain.ts's latestCapTerm, expressed in SQL because this
+// runs for every session lookup on every request; both orderings are
+// (recorded_at desc, id desc), so they cannot disagree.
+const CAPS_IN_FORCE = `
+  left join lateral (
+    select ct.weekly_cap, ct.daily_cap, ct.contract_ref
+      from cap_terms ct
+     where ct.user_id = u.id
+     order by ct.recorded_at desc, ct.id desc
+     limit 1
+  ) caps on true
+`;
 
 const USER_SELECT = `
   select
     u.id, u.name, u.entity_id as "entityId", e.name as "entityName", e.domain as "entityDomain",
     u.role, u.pay_type as "payType", u.function, u.manager_id as "managerId", m.name as "managerName",
-    u.weekly_cap as "weeklyCap", u.daily_cap as "dailyCap", u.active
+    caps.weekly_cap as "weeklyCap", caps.daily_cap as "dailyCap", caps.contract_ref as "capsContractRef",
+    u.active
   from users u
   join entities e on e.id = u.entity_id
   left join users m on m.id = u.manager_id
+  ${CAPS_IN_FORCE}
 `;
 
 export async function getUserById(id: number): Promise<SessionUser | null> {
@@ -103,8 +124,12 @@ function normalizeUser(row: Record<string, unknown>): SessionUser {
     function: String(row.function),
     managerId: row.managerId === null ? null : Number(row.managerId),
     managerName: row.managerName === null ? null : String(row.managerName),
-    weeklyCap: Number(row.weeklyCap),
-    dailyCap: Number(row.dailyCap),
+    // A salaried person has no cap_terms row and no caps; an hourly one
+    // always does (db/seed.ts checks it). 0 rather than NaN so a missing
+    // row can never widen a cap by accident.
+    weeklyCap: row.weeklyCap === null ? 0 : Number(row.weeklyCap),
+    dailyCap: row.dailyCap === null ? 0 : Number(row.dailyCap),
+    capsContractRef: row.capsContractRef === null ? null : String(row.capsContractRef),
     active: Boolean(row.active),
   };
 }
@@ -158,6 +183,7 @@ export interface AdminUserRow {
   payType: PayType;
   weeklyCap: number;
   dailyCap: number;
+  capsContractRef: string | null; // the contract that agreed those caps
   managerId: number | null;
   managerName: string | null;
   active: boolean;
@@ -179,19 +205,22 @@ export async function getUsersForEntity(entityId: number, activeOnly: boolean): 
     role: Role;
     function: string;
     pay_type: PayType;
-    weekly_cap: string;
-    daily_cap: string;
+    weekly_cap: string | null;
+    daily_cap: string | null;
+    caps_contract_ref: string | null;
     manager_id: string | null;
     manager_name: string | null;
     active: boolean;
     timesheet_count: string;
   }>(
     `
-      select u.id, u.name, u.role, u.function, u.pay_type, u.weekly_cap, u.daily_cap, u.active,
+      select u.id, u.name, u.role, u.function, u.pay_type, u.active,
+        caps.weekly_cap, caps.daily_cap, caps.contract_ref as caps_contract_ref,
         u.manager_id, m.name as manager_name,
         (select count(*) from timesheets t where t.user_id = u.id) as timesheet_count
       from users u
       left join users m on m.id = u.manager_id
+      ${CAPS_IN_FORCE}
       where u.entity_id = $1 ${activeOnly ? "and u.active = true" : ""}
       order by u.active desc, u.name
     `,
@@ -219,8 +248,9 @@ export async function getUsersForEntity(entityId: number, activeOnly: boolean): 
       role: r.role,
       function: r.function,
       payType: r.pay_type,
-      weeklyCap: Number(r.weekly_cap),
-      dailyCap: Number(r.daily_cap),
+      weeklyCap: r.weekly_cap === null ? 0 : Number(r.weekly_cap),
+      dailyCap: r.daily_cap === null ? 0 : Number(r.daily_cap),
+      capsContractRef: r.caps_contract_ref,
       managerId: r.manager_id === null ? null : Number(r.manager_id),
       managerName: r.manager_name,
       active: r.active,
@@ -274,6 +304,26 @@ export async function getContractTermsForUser(userId: number): Promise<ContractT
     [userId],
   );
   return result.rows.map((r) => ({ endDate: r.end_date, contractRef: r.contract_ref, recordedAt: r.recorded_at, kind: r.kind }));
+}
+
+// Every cap_terms row for a user; callers pass them through
+// lib/domain.ts's latestCapTerm. The Users screen and SessionUser take
+// the SQL shortcut (CAPS_IN_FORCE) because they only ever need the one
+// in force; this is for anywhere that wants the history, and for the
+// proof scripts, which deliberately use the shared pure function rather
+// than trusting the SQL.
+export async function getCapTermsForUser(userId: number): Promise<CapTermRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{ weekly_cap: string; daily_cap: string; contract_ref: string; recorded_at: string }>(
+    "select weekly_cap, daily_cap, contract_ref, recorded_at::text as recorded_at from cap_terms where user_id = $1",
+    [userId],
+  );
+  return result.rows.map((r) => ({
+    weeklyCap: Number(r.weekly_cap),
+    dailyCap: Number(r.daily_cap),
+    contractRef: r.contract_ref,
+    recordedAt: r.recorded_at,
+  }));
 }
 
 export async function getRatesForUser(userId: number): Promise<RateRow[]> {

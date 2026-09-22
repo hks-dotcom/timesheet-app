@@ -3,10 +3,11 @@ import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
 import { TimesheetForm } from "@/components/TimesheetForm";
 import { fromUTCDate, mostRecentFriday } from "@/lib/dateutil";
-import { blockedDaysFromRows, latestContractTerm, offerableWeeks, weekdayDates, windowOf, ZERO_HOURS } from "@/lib/domain";
+import { blockedDaysFromRows, latestCapTerm, latestContractTerm, offerableWeeks, weekdayDates, windowOf, ZERO_HOURS } from "@/lib/domain";
 import { formatDateLong, formatDateShort } from "@/lib/format";
 import {
   getActiveCustomersForEntity,
+  getCapTermsForUser,
   getContractTermsForUser,
   getHolidaysByDate,
   getStreamsForEntity,
@@ -39,6 +40,11 @@ export default async function NewTimesheetPage({
   // never offered here — not shown, not selectable, not defaulted to.
   // offerableWeeks is the one function that applies that rule; the nav
   // badge and the Tracker use the very same one.
+  // (b) The caps the form shows and pre-validates against are the ones
+  // in force in cap_terms, read through the shared latestCapTerm — the
+  // same values submitCore will snapshot, so the form can never advertise
+  // a ceiling the server does not apply.
+  const caps = latestCapTerm(await getCapTermsForUser(me.id));
   const contractTerms = await getContractTermsForUser(me.id);
   const endDate = latestContractTerm(contractTerms)?.endDate ?? null;
   const recentWeeks = offerableWeeks(anchor, earliestWeek, endDate);
@@ -140,8 +146,8 @@ export default async function NewTimesheetPage({
         weekEnding={targetWeek}
         weekDates={dates}
         managerName={me.managerName ?? "your manager"}
-        dailyCap={me.dailyCap}
-        weeklyCap={me.weeklyCap}
+        dailyCap={caps?.dailyCap ?? 0}
+        weeklyCap={caps?.weeklyCap ?? 0}
         streams={streams}
         customers={customers}
         blocked={blocked}

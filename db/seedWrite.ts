@@ -32,7 +32,7 @@ async function insertBatch(
 // Tables whose id is a real identity column — after seeding with explicit
 // ids, the sequence needs to catch up so ordinary app inserts don't collide.
 const IDENTITY_TABLES = [
-  "entities", "users", "rates", "contract_terms", "customers", "streams",
+  "entities", "users", "rates", "contract_terms", "cap_terms", "customers", "streams",
   "time_off", "timesheets", "events", "notifications", "chases", "admin_log",
 ];
 
@@ -42,7 +42,7 @@ export async function writeSeed(client: PoolClient, seed: SeedResult): Promise<v
     await client.query(`
       truncate table
         admin_log, chases, notifications, events, timesheets,
-        time_off, holidays, streams, customers, accounts, contract_terms, rates, users, entities
+        time_off, holidays, streams, customers, accounts, cap_terms, contract_terms, rates, users, entities
       restart identity cascade
     `);
 
@@ -65,8 +65,11 @@ export async function writeSeed(client: PoolClient, seed: SeedResult): Promise<v
     await insertBatch(
       client,
       "users",
-      ["id", "name", "entity_id", "role", "pay_type", "function", "weekly_cap", "daily_cap", "active"],
-      seed.users.map((u) => [u.id, u.name, u.entityId, u.role, u.payType, u.function, u.weeklyCap, u.dailyCap, u.active]),
+      // weekly_cap / daily_cap are deliberately NOT written: caps live in
+      // cap_terms now (item b), and leaving the retired columns null
+      // makes a stale value impossible to mistake for the caps in force.
+      ["id", "name", "entity_id", "role", "pay_type", "function", "active"],
+      seed.users.map((u) => [u.id, u.name, u.entityId, u.role, u.payType, u.function, u.active]),
     );
     for (const u of seed.users) {
       if (u.managerId === null) continue;
@@ -85,6 +88,13 @@ export async function writeSeed(client: PoolClient, seed: SeedResult): Promise<v
       "contract_terms",
       ["id", "user_id", "end_date", "contract_ref", "contract_signed_on", "recorded_by", "kind"],
       seed.contractTerms.map((c) => [c.id, c.userId, c.endDate, c.contractRef, c.contractSignedOn, c.recordedBy, c.kind]),
+    );
+
+    await insertBatch(
+      client,
+      "cap_terms",
+      ["id", "user_id", "weekly_cap", "daily_cap", "contract_ref", "contract_signed_on", "recorded_by"],
+      seed.capTerms.map((c) => [c.id, c.userId, c.weeklyCap, c.dailyCap, c.contractRef, c.contractSignedOn, c.recordedBy]),
     );
 
     await insertBatch(

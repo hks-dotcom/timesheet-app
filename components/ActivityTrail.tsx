@@ -23,6 +23,7 @@ function EventDetail({ event }: { event: TrailEvent }) {
       <>
         <div className="ev-p">
           {formatHours(total)}h &middot; caps {formatHours(weeklyCap)}h week, {formatHours(dailyCap)}h day
+          {typeof p.capsContractRef === "string" ? ` (${p.capsContractRef})` : ""}
           {p.late ? " · filed late" : ""}
           {p.resubmission ? " · resubmission" : ""}
         </div>
