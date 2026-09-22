@@ -49,8 +49,10 @@ invariants the app depends on: no hours on a blocked day, no submission over
 its own snapshotted caps, every approval holding the rate and contract
 reference in force for that week, every processed row coded by the resolution
 rule, no expense-account override without a reason, no cap in force without a
-contract behind it. It also proves the append-only triggers by attempting an
-UPDATE and a DELETE and showing both are refused.
+contract behind it. One further check runs the other way round and must be
+non-zero: every status the app can show has at least one timesheet in it, so
+no screen is empty on arrival. It also proves the append-only triggers by
+attempting an UPDATE and a DELETE and showing both are refused.
 
 `scripts/verify-payroll.ts` re-checks the processed history independently: that
 every amount equals the two snapshots it was built from, that each row's
@@ -67,7 +69,8 @@ npm run build                                     # every route renders dynamica
 
 ## Running it locally
 
-Node 20 or newer, and a Postgres database (the demo runs on Neon).
+Node 20.9 or newer (what Next.js 16 itself requires), and a Postgres
+database (the demo runs on Neon).
 
 ```bash
 npm install
