@@ -6,6 +6,7 @@ import type { RateRow } from "@/lib/domain";
 import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
 import { getRecentPayRuns } from "@/lib/paycalendar";
 import { getHourlyUsersForEntity, getRatesForUser, getReportableForEntity, getSodFlags } from "@/lib/repo";
+import { buildHandoff, HANDOFF_NOTE } from "@/lib/handoff";
 import { buildReportRows, type ReportStatusFilter } from "@/lib/reports";
 import { requireUser } from "@/lib/session";
 
@@ -16,10 +17,10 @@ const RUN_WINDOW = 52; // ~2 years, enough to cover the seeded history
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; who?: string; status?: string; recompute?: string; sel?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; who?: string; status?: string; recompute?: string; sel?: string; handoff?: string }>;
 }) {
   const me = await requireUser(["admin"]);
-  const { from, to, who, status, recompute, sel } = await searchParams;
+  const { from, to, who, status, recompute, sel, handoff } = await searchParams;
   const selectedId = sel ? Number(sel) : null;
 
   const todayISO = fromUTCDate(new Date());
@@ -50,6 +51,18 @@ export default async function ReportsPage({
     { fromPayday, toPayday, statusFilter },
     recomputeOn && ratesByUser ? { todayISO, ratesByUser } : undefined,
   );
+
+  // (c) The payroll handoff for one processed pay run. The chooser only
+  // offers pay runs this entity has actually processed something into,
+  // derived from the processed events rather than from the calendar, so
+  // it can never offer an empty file. The handoff itself is built from
+  // the WHOLE entity's reportable set, not the filtered rows, because
+  // what payroll receives must not depend on what the screen happens to
+  // be filtered to.
+  const allForEntity = whoId === null ? timesheets : await getReportableForEntity(me.entityId);
+  const processedPaydays = [...new Set(allForEntity.filter((t) => t.processed !== null).map((t) => t.processed!.payRun.payday))].sort().reverse();
+  const handoffPayday = handoff && processedPaydays.includes(handoff) ? handoff : null;
+  const handoffFile = handoffPayday === null ? null : buildHandoff(allForEntity, me.entityName, handoffPayday);
 
   const totalPay = roundMoney(rows.reduce((sum, r) => sum + r.pay, 0));
   const totalRecomputed = roundMoney(rows.reduce((sum, r) => sum + (r.recomputedPay ?? 0), 0));
@@ -260,6 +273,153 @@ export default async function ReportsPage({
               .
             </div>
           </div>
+        )}
+      </div>
+
+      {/* (c) Payroll handoff — what payroll receives for one processed
+          pay run, already coded to the ledger. Deliberately not a
+          journal: gross pay and its coding only. */}
+      <div className="card">
+        <div className="card-h">
+          <div>
+            <h2>Payroll handoff</h2>
+            <p>{HANDOFF_NOTE}</p>
+          </div>
+          <form className="row" method="get">
+            {who ? <input type="hidden" name="who" value={who} /> : null}
+            <input type="hidden" name="from" value={fromPayday} />
+            <input type="hidden" name="to" value={toPayday} />
+            <input type="hidden" name="status" value={statusFilter} />
+            {recomputeOn ? <input type="hidden" name="recompute" value="1" /> : null}
+            <label className="field">
+              <span>Pay run</span>
+              <select name="handoff" defaultValue={handoffPayday ?? ""}>
+                <option value="">Choose a processed pay run</option>
+                {processedPaydays.map((d) => (
+                  <option key={d} value={d}>
+                    {formatDateLong(d)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn" type="submit">
+              Show
+            </button>
+          </form>
+        </div>
+
+        {handoffFile === null ? (
+          <div className="card-b">
+            <div className="empty">Choose a processed pay run to see the file payroll receives.</div>
+          </div>
+        ) : (
+          <>
+            <div className="card-b row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+              <b>{handoffFile.title}</b>
+              <a className="btn sm" href={`/reports/handoff/csv?payday=${handoffFile.payday}`}>
+                Download CSV
+              </a>
+            </div>
+
+            {!handoffFile.balanced && (
+              <div className="card-b">
+                <div className="note bad">
+                  <b>These figures do not agree.</b> The summary totals {formatMoney(handoffFile.total)}, but this pay run&rsquo;s
+                  processed amounts total {formatMoney(handoffFile.processedTotal)}. Do not hand this over until it is explained.
+                </div>
+              </div>
+            )}
+
+            <div className="card-b flush">
+              <div className="scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Person</th>
+                      <th>Week ending</th>
+                      <th>Stream</th>
+                      <th>Customer</th>
+                      <th className="r">Hours</th>
+                      <th className="r">Rate held</th>
+                      <th>Rate contract</th>
+                      <th className="r">Gross</th>
+                      <th>Expense account</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {handoffFile.detail.map((d) => (
+                      <tr key={d.timesheetId}>
+                        <td>{d.userName}</td>
+                        <td>{formatDateLong(d.weekEnding)}</td>
+                        <td>{d.streamName}</td>
+                        <td>{d.customerName ?? <span className="muted">&mdash;</span>}</td>
+                        <td className="r num">{formatHours(d.hours)}</td>
+                        <td className="r num">{formatMoney(d.rateHeld)}</td>
+                        <td className="muted" style={{ fontSize: 12 }}>
+                          {d.rateContractRef ?? "\u2014"}
+                        </td>
+                        <td className="r num">{formatMoney(d.gross)}</td>
+                        <td>
+                          {d.expenseAccount} &middot; {d.expenseAccountName}
+                          {d.accountOverridden && (
+                            <>
+                              {" "}
+                              <span className="pill warn">Account override</span>
+                              {d.accountOverrideReason && (
+                                <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                                  {d.accountOverrideReason}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="card-b flush">
+              <div className="scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Expense account</th>
+                      <th>Name</th>
+                      <th className="r">People</th>
+                      <th className="r">Weeks</th>
+                      <th className="r">Gross</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {handoffFile.summary.map((l) => (
+                      <tr key={l.account}>
+                        <td className="num">{l.account}</td>
+                        <td>{l.accountName}</td>
+                        <td className="r num">{l.people}</td>
+                        <td className="r num">{l.weeks}</td>
+                        <td className="r num">{formatMoney(l.gross)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3} className="r">
+                        <b>Total</b>
+                      </td>
+                      <td className="r num">
+                        <b>{handoffFile.detail.length}</b>
+                      </td>
+                      <td className="r num">
+                        <b>{formatMoney(handoffFile.total)}</b>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </AppShell>

@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { markProcessedBatchAction, type ProcessState } from "@/app/actions/payroll";
-import { ACCOUNTS, accountName } from "@/lib/accounts";
+import { ACCOUNTS } from "@/lib/accounts";
+import { summariseByAccount } from "@/lib/handoff";
 import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
 
 export interface ReadyRow {
@@ -68,12 +69,17 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
   const ACCOUNT_REASON_MIN = 5;
 
   const batchRows = batchIds ? rows.filter((r) => batchIds.includes(r.id)) : [];
-  const grandTotal = roundMoney(batchRows.reduce((sum, r) => sum + r.amount, 0));
-  const byAccount = new Map<string, number>();
-  for (const r of batchRows) {
-    const account = accounts.get(r.id) ?? r.defaultAccount;
-    byAccount.set(account, roundMoney((byAccount.get(account) ?? 0) + r.amount));
-  }
+  // (c) The same summariser the payroll handoff uses, so what an admin
+  // agrees to here and what payroll later receives cannot disagree.
+  const costByAccount = summariseByAccount(
+    batchRows.map((r) => ({
+      account: accounts.get(r.id) ?? r.defaultAccount,
+      amount: r.amount,
+      userName: r.userName,
+      weekEnding: r.weekEnding,
+    })),
+  );
+  const grandTotal = costByAccount.total;
   // D7: the PREVENTIVE half of the segregation-of-duties check — Reports'
   // banner (lib/repo.ts's getSodFlags) is the DETECTIVE half, after the
   // fact. Same condition, checked before it can happen instead of after.
@@ -227,14 +233,14 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
                   refuses the whole batch otherwise.
                 </div>
               )}
-              <p style={{ marginTop: 12, marginBottom: 6 }}>Journal by expense head</p>
+              <p style={{ marginTop: 12, marginBottom: 6 }}>Cost by expense account</p>
               <dl className="kv">
-                {[...byAccount.entries()].map(([code, amount]) => (
-                  <div key={code} style={{ display: "contents" }}>
+                {costByAccount.lines.map((l) => (
+                  <div key={l.account} style={{ display: "contents" }}>
                     <dt>
-                      {code} &middot; {accountName(code)}
+                      {l.account} &middot; {l.accountName}
                     </dt>
-                    <dd>{formatMoney(amount)}</dd>
+                    <dd>{formatMoney(l.gross)}</dd>
                   </div>
                 ))}
                 <dt>

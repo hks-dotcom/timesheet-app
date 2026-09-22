@@ -23,6 +23,12 @@ role.
 | `/reports/csv` | payroll admin | `getCurrentUser()` + `role !== "admin"` | 307 → `/` |
 | `/queue/csv` | manager | `getCurrentUser()` + `role !== "manager"` | 307 → `/` |
 | `/timesheets/csv` | any hourly person, own rows only | `getCurrentUser()` + `payType !== "hourly"` | 307 → `/` |
+| `/reports/handoff/csv` | payroll admin | `getCurrentUser()` + `role !== "admin"` | 307 → `/` |
+
+`/reports/handoff/csv` takes only a `payday`; the rows come from
+`getReportableForEntity(me.entityId)`, so there is no entity parameter
+to tamper with and a payday belonging to the other entity yields no
+rows (307 back to `/reports`).
 
 ## Entity scoping
 
