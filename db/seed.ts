@@ -165,6 +165,30 @@ async function runVerifications(client: PoolClient) {
       `,
     },
     {
+      // The front-door claim is "even after two raises", so the seed has
+      // to keep someone who actually demonstrates it: three rate rows,
+      // the first in force at least eighteen months before the anchor,
+      // and an approved week under that first rate. Without this check a
+      // later roster tidy-up could quietly flatten the only person the
+      // guided entry points at.
+      name: "hourly people with three rate rows whose first is in force 18+ months before the anchor (must be at least 1, so 0 fails)",
+      sql: `
+        select (case when count(*) = 0 then 1 else 0 end)::bigint as count from (
+          select r.user_id
+            from rates r
+           group by r.user_id
+          having count(*) >= 3
+             and min(r.effective_from) <= (select anchor_friday - interval '18 months' from demo_meta where id = true)
+             and exists (
+               select 1 from events e
+               join timesheets t on t.id = e.timesheet_id
+              where e.type = 'approved' and t.user_id = r.user_id
+                and t.week_ending <= (select anchor_friday - interval '18 months' from demo_meta where id = true)
+             )
+        ) q
+      `,
+    },
+    {
       name: "timesheets whose customer belongs to a different entity than the timesheet",
       sql: `
         select count(*) from timesheets t
