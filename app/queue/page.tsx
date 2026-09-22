@@ -3,9 +3,11 @@ import { AppShell } from "@/components/AppShell";
 import { ApprovalQueue, type PendingSheet } from "@/components/ApprovalQueue";
 import { StatusMark } from "@/components/StatusMark";
 import { rateAsOf, weekdayDates, ZERO_HOURS } from "@/lib/domain";
-import { formatDateLong, formatDateTime, formatHours, formatMoney } from "@/lib/format";
+import { formatDateLong, formatDateTime, formatHours, formatMoney, roundMoney } from "@/lib/format";
 import { getApprovedForManager, getBlockedDaysBulk, getPendingForManager, getRatesForUser } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
+import { RowLink } from "@/components/RowLink";
+import { timesheetHref } from "@/lib/timesheetHref";
 
 export const dynamic = "force-dynamic";
 
@@ -97,13 +99,11 @@ export default async function QueuePage({
                     <tbody>
                       {approved.map((t) => {
                         const hours = t.submitted?.totalHours ?? 0;
-                        const pay = t.approved ? t.approved.hourly * hours : null;
+                        const pay = t.approved ? roundMoney(t.approved.hourly * hours) : null;
                         return (
-                          <tr key={t.id}>
+                          <tr key={t.id} id={`ts-${t.id}`} className={`rowlink-row${selectedId === t.id ? " sel" : ""}`}>
                             <td>
-                              <Link className="rowlink" href={`/queue?filter=approved&sel=${t.id}`}>
-                                {t.userName}
-                              </Link>
+                              <RowLink {...timesheetHref(me, t)}>{t.userName}</RowLink>
                             </td>
                             <td>{formatDateLong(t.weekEnding)}</td>
                             <td className="r num">{formatHours(hours)}</td>

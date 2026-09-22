@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
-import { formatDateLong, formatHours, formatMoney } from "@/lib/format";
+import { RowLink } from "@/components/RowLink";
+import { timesheetHref } from "@/lib/timesheetHref";
+import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
 import { listTimesheetsForUser } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
 import { STATUSES, type Status } from "@/lib/status";
@@ -86,13 +88,11 @@ export default async function MyTimesheetsPage({
                 ) : (
                   pageItems.map((t) => {
                     const hours = t.submitted?.totalHours ?? Object.values(t.draftHours ?? {}).reduce((a, b) => a + b, 0);
-                    const pay = t.approved ? t.approved.hourly * (t.submitted?.totalHours ?? 0) : null;
+                    const pay = t.approved ? roundMoney(t.approved.hourly * (t.submitted?.totalHours ?? 0)) : null;
                     return (
-                      <tr key={t.id}>
+                      <tr key={t.id} id={`ts-${t.id}`} className={`rowlink-row${selectedId === t.id ? " sel" : ""}`}>
                         <td>
-                          <Link className="rowlink" href={`/timesheets?filter=${activeFilter}&page=${currentPage}&sel=${t.id}`}>
-                            {formatDateLong(t.weekEnding)}
-                          </Link>
+                          <RowLink {...timesheetHref(me, t)}>{formatDateLong(t.weekEnding)}</RowLink>
                           {t.submitted?.late ? (
                             <>
                               {" "}

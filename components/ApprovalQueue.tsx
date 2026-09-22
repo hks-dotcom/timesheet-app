@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { approveBatchAction, returnAction, type ApproveState, type FormState } from "@/app/actions/timesheet";
 import { DAY_KEYS, type BlockedDay, type DayKey, type Hours } from "@/lib/domain";
@@ -111,7 +112,13 @@ export function ApprovalQueue({ sheets }: { sheets: PendingSheet[] }) {
                 style={{ marginTop: 4 }}
               />
               <span>
-                <b>{s.userName}</b> &middot; {s.userFunction}
+                {/* (c) A card, not a table row, and it carries Approve
+                    and Return controls — so the card is not one big
+                    link. The person's name opens the timesheet. */}
+                <Link className="rowlink" href={`/timesheet/${s.id}`}>
+                  <b>{s.userName}</b>
+                </Link>{" "}
+                &middot; {s.userFunction}
                 <br />
                 <span className="muted">
                   Week ending {formatDateLong(s.weekEnding)} &middot; {s.streamName}

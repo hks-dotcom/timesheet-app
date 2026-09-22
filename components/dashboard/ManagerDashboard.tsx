@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { RowLink } from "@/components/RowLink";
+import { timesheetHref } from "@/lib/timesheetHref";
 import { Kpi } from "@/components/Kpi";
 import { MyTeamCard } from "@/components/dashboard/MyTeamCard";
 import { formatDateLong, formatDateTime, formatHours } from "@/lib/format";
@@ -49,11 +51,9 @@ export async function ManagerDashboard({ me }: { me: SessionUser }) {
                 </thead>
                 <tbody>
                   {pending.map((t) => (
-                    <tr key={t.id}>
+                    <tr key={t.id} id={`ts-${t.id}`} className="rowlink-row">
                       <td>
-                        <Link className="rowlink" href={`/dashboard?sel=${t.id}`}>
-                          {t.userName}
-                        </Link>
+                        <RowLink {...timesheetHref(me, t)}>{t.userName}</RowLink>
                       </td>
                       <td>{formatDateLong(t.weekEnding)}</td>
                       <td>

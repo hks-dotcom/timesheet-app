@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { RowLink } from "@/components/RowLink";
 import { StatusMark } from "@/components/StatusMark";
 import { fromUTCDate } from "@/lib/dateutil";
 import type { RateRow } from "@/lib/domain";
@@ -171,12 +171,12 @@ export default async function ReportsPage({
                   </tr>
                 ) : (
                   rows.map((r) => (
-                    <tr key={r.id} id={`ts-${r.id}`} className={selectedId === r.id ? "sel" : undefined}>
+                    <tr key={r.id} id={`ts-${r.id}`} className={`rowlink-row${selectedId === r.id ? " sel" : ""}`}>
                       <td>{formatDateLong(r.weekEnding)}</td>
                       <td>
-                        <Link className="rowlink" href={`/reports?${csvQuery}&sel=${r.id}`}>
+                        <RowLink href={`/timesheet/${r.id}`} label={`Open ${r.userName}'s week ending ${r.weekEnding}`}>
                           {r.userName}
-                        </Link>
+                        </RowLink>
                       </td>
                       <td>{r.streamName}</td>
                       <td>{r.customerName ?? "—"}</td>
@@ -353,8 +353,15 @@ export default async function ReportsPage({
                   </thead>
                   <tbody>
                     {handoffFile.detail.map((d) => (
-                      <tr key={d.timesheetId}>
-                        <td>{d.userName}</td>
+                      <tr key={d.timesheetId} id={`ts-${d.timesheetId}`} className="rowlink-row">
+                        <td>
+                          <RowLink
+                            href={`/timesheet/${d.timesheetId}`}
+                            label={`Open ${d.userName}'s week ending ${d.weekEnding}`}
+                          >
+                            {d.userName}
+                          </RowLink>
+                        </td>
                         <td>{formatDateLong(d.weekEnding)}</td>
                         <td>{d.streamName}</td>
                         <td>{d.customerName ?? <span className="muted">&mdash;</span>}</td>

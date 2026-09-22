@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { markProcessedBatchAction, type ProcessState } from "@/app/actions/payroll";
 import { ACCOUNTS } from "@/lib/accounts";
@@ -136,13 +137,24 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
                     <input type="checkbox" checked={selected.has(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} />
                   </td>
                   <td>
-                    {r.userName}
+                    {/* (c) This table's rows carry a checkbox, an account
+                        dropdown and a reason input, so the row itself is
+                        NOT a link — a stray click while picking an
+                        account must never navigate away mid-batch.
+                        The person and week cells link instead. */}
+                    <Link className="rowlink" href={`/timesheet/${r.id}`}>
+                      {r.userName}
+                    </Link>
                     <br />
                     <span className="muted" style={{ fontSize: 11.5 }}>
                       {r.userFunction}
                     </span>
                   </td>
-                  <td>{formatDateLong(r.weekEnding)}</td>
+                  <td>
+                    <Link className="rowlink" href={`/timesheet/${r.id}`}>
+                      {formatDateLong(r.weekEnding)}
+                    </Link>
+                  </td>
                   <td>{r.streamName}</td>
                   <td>{r.customerName ?? "—"}</td>
                   <td className="r num">{formatHours(r.hours)}</td>

@@ -3,7 +3,9 @@ import { Kpi } from "@/components/Kpi";
 import { StatusMark } from "@/components/StatusMark";
 import { fromUTCDate } from "@/lib/dateutil";
 import { rateAsOf } from "@/lib/domain";
-import { formatDateLong, formatHours, formatMoney } from "@/lib/format";
+import { RowLink } from "@/components/RowLink";
+import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
+import { timesheetHref } from "@/lib/timesheetHref";
 import { getRatesForUser, listTimesheetsForUser, type SessionUser } from "@/lib/repo";
 import { STATUSES } from "@/lib/status";
 
@@ -63,13 +65,11 @@ export async function ContributorDashboard({ me }: { me: SessionUser }) {
                 ) : (
                   sheets.slice(0, 8).map((t) => {
                     const totalHours = t.submitted?.totalHours ?? Object.values(t.draftHours ?? {}).reduce((a, b) => a + b, 0);
-                    const pay = t.approved ? t.approved.hourly * (t.submitted?.totalHours ?? 0) : null;
+                    const pay = t.approved ? roundMoney(t.approved.hourly * (t.submitted?.totalHours ?? 0)) : null;
                     return (
-                      <tr key={t.id}>
+                      <tr key={t.id} id={`ts-${t.id}`} className="rowlink-row">
                         <td>
-                          <Link className="rowlink" href={`/dashboard?sel=${t.id}`}>
-                            {formatDateLong(t.weekEnding)}
-                          </Link>
+                          <RowLink {...timesheetHref(me, t)}>{formatDateLong(t.weekEnding)}</RowLink>
                         </td>
                         <td>{t.streamName}</td>
                         <td>{t.customerName ?? <span className="muted">&mdash;</span>}</td>

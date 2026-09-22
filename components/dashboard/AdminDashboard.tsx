@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { RowLink } from "@/components/RowLink";
+import { timesheetHref } from "@/lib/timesheetHref";
 import { Kpi } from "@/components/Kpi";
 import { addDays, fromUTCDate } from "@/lib/dateutil";
 import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
@@ -178,11 +180,9 @@ export async function AdminDashboard({ me }: { me: SessionUser }) {
                     // the standing rule on money arithmetic.
                     const pay = roundMoney(hours * (t.approved?.hourly ?? 0));
                     return (
-                      <tr key={t.id}>
+                      <tr key={t.id} id={`ts-${t.id}`} className="rowlink-row">
                         <td>
-                          <Link className="rowlink" href={`/dashboard?sel=${t.id}`}>
-                            {t.userName}
-                          </Link>
+                          <RowLink {...timesheetHref(me, t)}>{t.userName}</RowLink>
                         </td>
                         <td>{formatDateLong(t.weekEnding)}</td>
                         <td>{t.streamName}</td>

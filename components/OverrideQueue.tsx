@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { overrideApproveAction, type ApproveState } from "@/app/actions/timesheet";
 import { NotifyButton } from "@/components/NotifyButton";
@@ -45,7 +46,12 @@ export function OverrideQueue({ sheets }: { sheets: OverrideSheet[] }) {
         <div className="card-b" style={{ borderBottom: "1px solid var(--border)" }} key={s.id}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
             <span>
-              <b>{s.userName}</b> &middot; manager {s.managerName ?? "—"}
+              {/* (c) Card with Notify and Override controls, so the
+                  name is the link rather than the whole card. */}
+              <Link className="rowlink" href={`/timesheet/${s.id}`}>
+                <b>{s.userName}</b>
+              </Link>{" "}
+              &middot; manager {s.managerName ?? "—"}
               <br />
               <span className="muted">
                 Week ending {formatDateLong(s.weekEnding)} &middot; {s.streamName}

@@ -462,6 +462,7 @@ export interface SubmittedPayload {
   totalHours: number;
   weeklyCap: number;
   dailyCap: number;
+  capsContractRef?: string; // the contract those caps trace to (item b)
   late?: boolean;
   reason?: string;
   resubmission?: boolean;
@@ -832,6 +833,21 @@ export async function getRecentEventsForViewer(me: TrailViewer, limit = 16): Pro
     [me.entityId, me.id, me.role, limit],
   );
   return result.rows.map(mapTrailEvent).reverse();
+}
+
+// One timesheet, but only if this viewer may see it — the SAME
+// predicate the trail uses, so the read-only page and the side panel
+// can never disagree about who may look at what. Returns null when
+// they may not, which the page turns into a redirect rather than a
+// "not found": the row exists, it is simply not theirs to read.
+export async function getTimesheetIfVisible(me: TrailViewer, timesheetId: number): Promise<TimesheetSummary | null> {
+  const pool = getPool();
+  const allowed = await pool.query<{ ok: boolean }>(
+    `select true as ok from timesheets t where t.id = $4 and ${visibilityFor("$1", "$2", "$3")}`,
+    [me.entityId, me.id, me.role, timesheetId],
+  );
+  if (allowed.rows.length === 0) return null;
+  return getTimesheetById(timesheetId);
 }
 
 // One timesheet's trail, but only if this viewer may see that timesheet.
