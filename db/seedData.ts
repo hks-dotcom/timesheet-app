@@ -391,6 +391,22 @@ const ACCOUNT_OVERRIDE: { userKey: string; weeksAgo: number; account: string }[]
   { userKey: "sunita", weeksAgo: 6, account: "6200" },
 ];
 
+// ---------------------------------------------------------------------
+// A note on dates, checked on every pass: there is not one hardcoded
+// calendar date anywhere in this file. Every date is derived from the
+// anchor (the most recent Friday when the seed runs) plus an offset in
+// weeks or days, so a reset six months from now produces the same
+// showcase relative to that day. The only four-digit numbers that look
+// like years are inside contract reference strings such as
+// "CTR-2026-0301", which are opaque identifiers, not dates, and the
+// holiday range, which is computed from the anchor's own year.
+//
+// Anything added here that a visitor is meant to see immediately —
+// unread notifications, the account-override rows, contracts ending
+// soon, overdue staff — must follow the same rule, or it stops being
+// visible the moment the anchor moves past it.
+// ---------------------------------------------------------------------
+
 const PAYROLL_ADMIN_BY_ENTITY: Record<string, string> = {
   corethread: "adam",
   nexcore: "kevin",
@@ -951,6 +967,12 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     }
   }
 
+  notes.push(
+    "Every date in this seed is derived from the anchor Friday plus an offset — there is no hardcoded " +
+      "calendar date in db/seedData.ts. The showcase items (unread notifications, the account-override " +
+      "rows, contracts ending within 21 days, overdue staff) therefore stay visible however far in the " +
+      "future the demo is reset.",
+  );
   notes.push(
     "Per-person 'home stream' isn't specified by the roster, only function/role — I picked one billable-fitting " +
       "stream per CoreThread hourly person (Bob/Nikhil -> T&M, Daniel -> Milestone, Ashley -> Support, " +
