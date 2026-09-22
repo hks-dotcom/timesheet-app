@@ -924,3 +924,53 @@ textarea {
 .rowlink:hover {
   text-decoration: underline;
 }
+
+/* (e) Guided entries on the gate. Built from the mock's own tokens —
+   surface, border, ink, sunk, radius — so they sit with the rest of
+   the card rather than introducing a second visual language. Stacked
+   at any width, which is also what they want on a phone. */
+.guides {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 2px;
+}
+.guide {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 11px 13px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.guide:hover:not(:disabled) {
+  background: var(--sunk);
+  border-color: var(--border-strong);
+}
+.guide:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.guide b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.guide span {
+  display: block;
+  margin-top: 3px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.or-explore {
+  margin: 16px 0 2px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}

@@ -422,7 +422,7 @@ const OVERDUE_STAFF = ["ashley", "jason"];
 function overdueWeeksAgoFor(userKey: string, anchorFriday: string, todayISO: string): number | null {
   for (let w = 1; w <= 3; w++) {
     const taken =
-      (RETURNED_RESUBMITTED.userKey === userKey && RETURNED_RESUBMITTED.weeksAgo === w) ||
+      RETURNED_RESUBMITTED_WEEKS.some((x) => x.userKey === userKey && x.weeksAgo === w) ||
       (OVERRIDE_APPROVED.userKey === userKey && OVERRIDE_APPROVED.weeksAgo === w) ||
       (LATE_SUBMISSION.userKey === userKey && LATE_SUBMISSION.weeksAgo === w) ||
       ACCOUNT_OVERRIDE.some((o) => o.userKey === userKey && o.weeksAgo === w);
@@ -472,7 +472,24 @@ const PAYROLL_ADMIN_BY_ENTITY: Record<string, string> = {
 
 // Deliberate scenarios named in the review. Each names the exact
 // (user, weeksAgo) pair it applies to.
-const RETURNED_RESUBMITTED = { userKey: "bob", weeksAgo: 3 };
+// Weeks that were submitted, returned with a note, then resubmitted.
+// Two of them, deliberately:
+//   - Bob at 3 weeks back is the recent, visible one.
+//   - Ashley at 20 weeks back is old enough that its pay run is always
+//     long past, so it is always PROCESSED. Guided entry 2 ("One
+//     timesheet, every step") needs a timesheet that reached the end of
+//     the line while still carrying its return, and the recent one
+//     cannot promise that: a week belonging to the most recent past pay
+//     run stays approved until payroll confirms it. db/seed.ts checks
+//     at least one processed timesheet has both.
+const RETURNED_RESUBMITTED_WEEKS = [
+  { userKey: "bob", weeksAgo: 3 },
+  // One old-enough-to-always-be-processed case per ENTITY: guided
+  // entry 2 resolves within whichever entity the visitor picked, so a
+  // single CoreThread example would leave NexCore without one.
+  { userKey: "ashley", weeksAgo: 20 },
+  { userKey: "sunita", weeksAgo: 20 },
+];
 const OVERRIDE_APPROVED = { userKey: "jason", weeksAgo: 6 };
 const LATE_SUBMISSION = { userKey: "ashley", weeksAgo: 2 };
 
@@ -710,7 +727,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       const payRun: PayRun = getPayRunForWeekEnding(weekEnding);
       const rate = rateAsOf(u.key, weekEnding);
 
-      const isReturned = RETURNED_RESUBMITTED.userKey === u.key && RETURNED_RESUBMITTED.weeksAgo === weeksAgo;
+      const isReturned = RETURNED_RESUBMITTED_WEEKS.some((x) => x.userKey === u.key && x.weeksAgo === weeksAgo);
       const isOverride = OVERRIDE_APPROVED.userKey === u.key && OVERRIDE_APPROVED.weeksAgo === weeksAgo;
       const isLate = LATE_SUBMISSION.userKey === u.key && LATE_SUBMISSION.weeksAgo === weeksAgo;
 

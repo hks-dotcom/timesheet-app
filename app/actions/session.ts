@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ensureFreshDemoData } from "@/lib/demo";
+import { isGuideId, resolveGuideTarget } from "@/lib/guides";
 import { findGateUser, type Role } from "@/lib/repo";
 import { SESSION_COOKIE } from "@/lib/session";
 
@@ -22,9 +23,27 @@ export type EnterAppState = { error: string } | null;
 export async function enterAppAction(_prev: EnterAppState, formData: FormData): Promise<EnterAppState> {
   await ensureFreshDemoData();
 
-  const role = String(formData.get("role") ?? "");
   const entityId = Number(formData.get("entityId"));
-  if (!VALID_ROLES.includes(role as Role) || !Number.isFinite(entityId)) {
+  if (!Number.isFinite(entityId)) return { error: "Choose a role and an entity." };
+
+  // A guided entry (item e). The id comes from the client, so it is
+  // checked against the allowlist in lib/guides.ts and nothing else;
+  // anything unrecognised is refused outright rather than treated as a
+  // destination. The landing URL is built server-side from the data as
+  // it stands now — the client never supplies one, so there is nothing
+  // here to turn into an open redirect.
+  const guideRaw = String(formData.get("guide") ?? "");
+  if (guideRaw) {
+    if (!isGuideId(guideRaw)) return { error: "That guided entry is not one this demo offers." };
+    const target = await resolveGuideTarget(guideRaw, entityId);
+    if (!target) return { error: "The demo data cannot show that right now. Try Reset the demo, or pick a role below." };
+    const store = await cookies();
+    store.set(SESSION_COOKIE, String(target.userId), { httpOnly: true, sameSite: "lax", path: "/" });
+    redirect(target.href);
+  }
+
+  const role = String(formData.get("role") ?? "");
+  if (!VALID_ROLES.includes(role as Role)) {
     return { error: "Choose a role and an entity." };
   }
 

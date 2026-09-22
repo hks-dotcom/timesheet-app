@@ -210,6 +210,22 @@ async function runVerifications(client: PoolClient) {
       sql: "select count(*) from events where type = 'submitted' and coalesce(btrim(payload->>'capsContractRef'), '') = ''",
     },
     {
+      // Guided entry 2 lands on a timesheet that went the whole way and
+      // still carries its return. At least one must always exist.
+      name: "entities with no processed timesheet carrying both a returned event and a resubmission",
+      sql: `
+        select count(*) from entities en
+         where not exists (
+           select 1 from timesheets t
+            where t.entity_id = en.id
+              and exists (select 1 from events e where e.timesheet_id = t.id and e.type = 'returned')
+              and exists (select 1 from events e where e.timesheet_id = t.id and e.type = 'submitted'
+                           and (e.payload->>'resubmission')::boolean is true)
+              and (select type from events e where e.timesheet_id = t.id order by e.at desc, e.id desc limit 1) = 'processed'
+         )
+      `,
+    },
+    {
       name: "timesheets whose customer belongs to a different entity than the timesheet",
       sql: `
         select count(*) from timesheets t

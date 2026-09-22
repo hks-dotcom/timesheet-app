@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { enterAppAction, type EnterAppState } from "@/app/actions/session";
+import { GUIDES } from "@/lib/guides";
 import type { EntityRow } from "@/lib/repo";
 
 const ROLES: { value: string; label: string }[] = [
@@ -20,6 +21,20 @@ export function GateForm({ entities }: { entities: EntityRow[] }) {
 
   return (
     <form action={formAction}>
+      {/* (e) Three guided entries, one click each. Each submits the
+          same gate action with a guide id; the role, the person and the
+          landing screen are all resolved server-side from the data. */}
+      <div className="guides">
+        {GUIDES.map((g) => (
+          <button key={g.id} className="guide" type="submit" name="guide" value={g.id} disabled={pending}>
+            <b>{g.title}</b>
+            <span>{g.line}</span>
+          </button>
+        ))}
+      </div>
+
+      <p className="or-explore">Or explore as any role.</p>
+
       <label htmlFor="g-role">View the app as</label>
       <select id="g-role" name="role" defaultValue="intern">
         {ROLES.map((r) => (
