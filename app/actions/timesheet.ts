@@ -126,8 +126,7 @@ async function rateAsOfUser(client: PoolClient, userId: number, dateISO: string)
 
 // "Save draft": persists whatever is in the form, with no cap or window
 // enforcement — a draft can be messy. Only submitting has to be valid.
-export async function saveDraftAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const me = await requireUser(["intern", "consultant"]);
+export async function saveDraftCore(me: SessionUser, formData: FormData): Promise<FormState> {
   if (me.payType !== "hourly") return { error: "Only hourly people file timesheets." };
 
   const weekEnding = String(formData.get("weekEnding") ?? "");
@@ -161,6 +160,11 @@ export async function saveDraftAction(_prev: FormState, formData: FormData): Pro
   revalidatePath("/timesheets");
   revalidatePath("/dashboard");
   return { ok: true };
+}
+
+export async function saveDraftAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  const me = await requireUser(["intern", "consultant"]);
+  return saveDraftCore(me, formData);
 }
 
 // "Submit for approval": re-saves the draft (so what's submitted matches
@@ -302,8 +306,7 @@ export async function submitAction(_prev: FormState, formData: FormData): Promis
 }
 
 // "Return with a reason": manager only, single sheet, back to draft.
-export async function returnAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const me = await requireUser(["manager"]);
+export async function returnCore(me: SessionUser, formData: FormData): Promise<FormState> {
   const timesheetId = Number(formData.get("timesheetId"));
   const reason = String(formData.get("reason") ?? "").trim();
 
@@ -364,6 +367,11 @@ export async function returnAction(_prev: FormState, formData: FormData): Promis
   return { ok: true };
 }
 
+export async function returnAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  const me = await requireUser(["manager"]);
+  return returnCore(me, formData);
+}
+
 export type ApproveState = { error: string } | { ok: true; batch: string } | null;
 
 // Batch approval: one transaction, one approved event per sheet, sharing a
@@ -371,8 +379,7 @@ export type ApproveState = { error: string } | { ok: true; batch: string } | nul
 // transaction — if any isn't, the whole batch fails and nothing changes.
 // Each event snapshots the rate in force for THAT sheet's own week ending,
 // read right now, at the moment of approval.
-export async function approveBatchAction(_prev: ApproveState, formData: FormData): Promise<ApproveState> {
-  const me = await requireUser(["manager"]);
+export async function approveBatchCore(me: SessionUser, formData: FormData): Promise<ApproveState> {
   const ids = formData
     .getAll("timesheetId")
     .map((v) => Number(v))
@@ -452,6 +459,11 @@ export async function approveBatchAction(_prev: ApproveState, formData: FormData
   } finally {
     client.release();
   }
+}
+
+export async function approveBatchAction(_prev: ApproveState, formData: FormData): Promise<ApproveState> {
+  const me = await requireUser(["manager"]);
+  return approveBatchCore(me, formData);
 }
 
 // D6: payroll admin approving a week directly, bypassing the assigned

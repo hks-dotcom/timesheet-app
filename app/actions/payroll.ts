@@ -6,6 +6,7 @@ import { ACCOUNTS, resolveExpenseAccount } from "@/lib/accounts";
 import { getPool } from "@/lib/db";
 import { roundMoney } from "@/lib/format";
 import { getPayRunForWeekEnding } from "@/lib/paycalendar";
+import type { SessionUser } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
 import { statusFromLatestEventType } from "@/lib/status";
 
@@ -20,8 +21,7 @@ const VALID_ACCOUNTS = new Set(ACCOUNTS.map((a) => a.code));
 // The amount comes only from the submitted event's hours and the approved
 // event's rate, both already snapshotted — the live rates table is never
 // read here.
-export async function markProcessedBatchAction(_prev: ProcessState, formData: FormData): Promise<ProcessState> {
-  const me = await requireUser(["admin"]);
+export async function markProcessedBatchCore(me: SessionUser, formData: FormData): Promise<ProcessState> {
   const ids = formData
     .getAll("timesheetId")
     .map((v) => Number(v))
@@ -121,6 +121,11 @@ export async function markProcessedBatchAction(_prev: ProcessState, formData: Fo
   } finally {
     client.release();
   }
+}
+
+export async function markProcessedBatchAction(_prev: ProcessState, formData: FormData): Promise<ProcessState> {
+  const me = await requireUser(["admin"]);
+  return markProcessedBatchCore(me, formData);
 }
 
 // The two snapshots a processed event's amount is built from: the hours on
