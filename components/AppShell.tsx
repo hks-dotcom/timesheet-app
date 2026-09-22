@@ -33,12 +33,16 @@ function navFor(role: Role): { tab: ActiveTab; href: string; label: string }[] {
   }
   if (role === "admin") {
     return [
+      // Users last: the day-to-day payroll run (queue -> processed ->
+      // tracker -> reports) reads left to right, and Users is the
+      // occasional administrative detour. This is a deliberate
+      // divergence from docs/mock.html, which puts Users second.
       { tab: "dashboard", href: "/dashboard", label: "Dashboard" },
-      { tab: "users", href: "/users", label: "Users" },
       { tab: "overrides", href: "/overrides", label: "Approval queue" },
       { tab: "processed", href: "/processed", label: "Mark processed" },
       { tab: "tracker", href: "/tracker", label: "Tracker" },
       { tab: "reports", href: "/reports", label: "Reports" },
+      { tab: "users", href: "/users", label: "Users" },
     ];
   }
   return [
