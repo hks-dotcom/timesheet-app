@@ -1,5 +1,5 @@
 import { formatDateShort, formatDateTime, formatHours, formatMoney } from "@/lib/format";
-import { getEventsForTimesheet, getRecentEntityEvents, type TrailEvent } from "@/lib/repo";
+import { getEventsForTimesheetIfVisible, getRecentEventsForViewer, type SessionUser, type TrailEvent } from "@/lib/repo";
 import { eventTypeStatus, MarkGlyph } from "./StatusMark";
 
 const EVENT_LABEL: Record<string, string> = {
@@ -89,21 +89,37 @@ function TrailRow({ event, showWho }: { event: TrailEvent; showWho: boolean }) {
   );
 }
 
-export async function ActivityTrail({ entityId, selectedId }: { entityId: number; selectedId: number | null }) {
-  const events = selectedId ? await getEventsForTimesheet(selectedId) : await getRecentEntityEvents(entityId, 16);
+// What the panel says it is showing, per role — it must describe the
+// scope the query actually applies, never promise more than it shows.
+const ACTIVITY_SUBTITLE: Record<SessionUser["role"], string> = {
+  intern: "Your own weeks, and anything you did. Rows are only ever added.",
+  consultant: "Your own weeks, and anything you did. Rows are only ever added.",
+  manager: "Your own weeks and your direct reports'. Rows are only ever added.",
+  admin: "Latest events in this entity. Rows are only ever added.",
+};
+
+export async function ActivityTrail({ me, selectedId }: { me: SessionUser; selectedId: number | null }) {
+  // A selected timesheet only opens its trail if this viewer is allowed
+  // to see that timesheet — checked in the query, not here. When they
+  // are not (a hand-typed ?sel=, a stale link to someone else's week),
+  // it falls back to their own scoped Activity rather than leaking one
+  // row of someone else's rate.
+  const selected = selectedId === null ? null : await getEventsForTimesheetIfVisible(me, selectedId);
+  const events = selected ?? (await getRecentEventsForViewer(me, 16));
+  const showingTrail = selected !== null;
   return (
     <div className="card side">
       <div className="card-h">
         <div>
-          <h2>{selectedId ? "Trail" : "Activity"}</h2>
-          <p>{selectedId ? "Every event written for this timesheet." : "Latest events in this entity. Rows are only ever added."}</p>
+          <h2>{showingTrail ? "Trail" : "Activity"}</h2>
+          <p>{showingTrail ? "Every event written for this timesheet." : ACTIVITY_SUBTITLE[me.role]}</p>
         </div>
       </div>
       <div className="trail">
         {events.length === 0 ? (
           <div className="empty">Nothing yet.</div>
         ) : (
-          events.map((e) => <TrailRow key={e.id} event={e} showWho={!selectedId} />)
+          events.map((e) => <TrailRow key={e.id} event={e} showWho={!showingTrail} />)
         )}
       </div>
     </div>

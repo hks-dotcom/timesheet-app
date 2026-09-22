@@ -698,7 +698,42 @@ function mapTrailEvent(row: Record<string, unknown>): TrailEvent {
   };
 }
 
-export async function getEventsForTimesheet(timesheetId: number): Promise<TrailEvent[]> {
+// Who may see a given timesheet's trail at all. Same shape as the rule
+// the server actions enforce for writing, applied to reading: a
+// contributor sees only their own, a manager their own plus their direct
+// reports', a payroll admin anything in their own entity. Entity is
+// checked in every branch, so a cross-entity id is refused even for an
+// admin. This is a SQL predicate, not a filter applied to rows already
+// fetched — the rows never leave the database.
+const TRAIL_VISIBILITY = `
+  t.entity_id = $ENTITY
+  and (
+    $ROLE = 'admin'
+    or t.user_id = $ME
+    or ($ROLE = 'manager' and exists (select 1 from users r where r.id = t.user_id and r.manager_id = $ME))
+    or exists (select 1 from events x where x.timesheet_id = t.id and x.actor_id = $ME)
+  )
+`;
+
+// Binds the predicate's placeholders to actual query parameters. Only
+// ever called with literal $n strings written here — no caller-supplied
+// text reaches the SQL, the viewer's own id/entity/role travel as bound
+// parameters.
+function visibilityFor(entityParam: string, meParam: string, roleParam: string): string {
+  return TRAIL_VISIBILITY.replaceAll("$ENTITY", entityParam).replaceAll("$ME", meParam).replaceAll("$ROLE", roleParam);
+}
+
+// The minimum a caller must tell the trail about itself. Narrower than
+// SessionUser so a proof script can construct one without a session.
+export interface TrailViewer {
+  id: number;
+  entityId: number;
+  role: Role;
+}
+
+// Unscoped on purpose and NOT exported: the only caller is
+// getEventsForTimesheetIfVisible below, which checks visibility first.
+async function getEventsForTimesheet(timesheetId: number): Promise<TrailEvent[]> {
   const pool = getPool();
   const result = await pool.query(
     `
@@ -716,7 +751,12 @@ export async function getEventsForTimesheet(timesheetId: number): Promise<TrailE
   return result.rows.map(mapTrailEvent);
 }
 
-export async function getRecentEntityEvents(entityId: number, limit = 16): Promise<TrailEvent[]> {
+// The Activity panel's own query, scoped to what this viewer may see.
+// A contributor's own events include ones they performed on someone
+// else's timesheet — there are none today, but the rule is "yours, plus
+// what you did", not "yours" alone, so a future actor-on-another-sheet
+// event still shows up for the person who did it.
+export async function getRecentEventsForViewer(me: TrailViewer, limit = 16): Promise<TrailEvent[]> {
   const pool = getPool();
   const result = await pool.query(
     `
@@ -726,13 +766,26 @@ export async function getRecentEntityEvents(entityId: number, limit = 16): Promi
       join users a on a.id = e.actor_id
       join timesheets t on t.id = e.timesheet_id
       join users u on u.id = t.user_id
-      where t.entity_id = $1
+      where ${visibilityFor("$1", "$2", "$3")}
       order by e.at desc, e.id desc
-      limit $2
+      limit $4
     `,
-    [entityId, limit],
+    [me.entityId, me.id, me.role, limit],
   );
   return result.rows.map(mapTrailEvent).reverse();
+}
+
+// One timesheet's trail, but only if this viewer may see that timesheet.
+// Returns null when they may not, so the caller can fall back to the
+// scoped Activity list rather than rendering someone else's rates.
+export async function getEventsForTimesheetIfVisible(me: TrailViewer, timesheetId: number): Promise<TrailEvent[] | null> {
+  const pool = getPool();
+  const allowed = await pool.query<{ ok: boolean }>(
+    `select true as ok from timesheets t where t.id = $4 and ${visibilityFor("$1", "$2", "$3")}`,
+    [me.entityId, me.id, me.role, timesheetId],
+  );
+  if (allowed.rows.length === 0) return null;
+  return getEventsForTimesheet(timesheetId);
 }
 
 // ---------------------------------------------------------------------------

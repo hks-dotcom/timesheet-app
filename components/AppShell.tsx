@@ -134,7 +134,7 @@ export async function AppShell({
       <main className="shell">
         <div>{children}</div>
         <aside>
-          <ActivityTrail entityId={me.entityId} selectedId={selectedId ?? null} />
+          <ActivityTrail me={me} selectedId={selectedId ?? null} />
         </aside>
       </main>
       <footer className="foot">
