@@ -1,5 +1,5 @@
-/* Design tokens and classes ported from docs/mock.html. FinOS light
-   palette, IBM Plex Sans/Mono, tabs not scroll, no emoji, and every status
+/* Design tokens and classes ported from docs/mock.html. Light palette,
+   IBM Plex Sans/Mono, tabs not scroll, no emoji, and every status
    carries both a shape and a label — never hue alone. */
 
 :root {

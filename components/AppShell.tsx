@@ -142,7 +142,7 @@ export async function AppShell({
         </aside>
       </main>
       <footer className="foot">
-        <span>Seeded and fictional. Customers, accounts and people follow the FinOS books.</span>
+        <span>Seeded and fictional. The companies, customers and accounts are the same invented ones used in FinOS.</span>
         <ResetDemoControl />
       </footer>
     </>
