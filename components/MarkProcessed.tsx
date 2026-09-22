@@ -140,7 +140,7 @@ export function MarkProcessed({ rows }: { rows: ReadyRow[] }) {
                 <td colSpan={7} className="r">
                   Selected
                 </td>
-                <td className="r num">
+                <td className="r num" style={{ fontSize: 18, fontWeight: 700 }}>
                   {formatMoney(roundMoney(rows.filter((r) => selected.has(r.id)).reduce((sum, r) => sum + r.amount, 0)))}
                 </td>
                 <td colSpan={2}></td>

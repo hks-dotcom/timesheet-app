@@ -184,7 +184,7 @@ export default async function ReportsPage({
                           <>
                             {" "}
                             <span className="pill warn" title="Differs from the resolver's default">
-                              Override
+                              Account override
                             </span>
                           </>
                         )}
@@ -195,7 +195,7 @@ export default async function ReportsPage({
                         {r.override && (
                           <>
                             {" "}
-                            <span className="pill warn">Override</span>
+                            <span className="pill warn">Approval override</span>
                           </>
                         )}
                       </td>
@@ -237,10 +237,11 @@ export default async function ReportsPage({
         {sodFlags.length > 0 && (
           <div className="card-b">
             <div className="note bad">
-              <b>Segregation check.</b> {sodFlags.length} timesheet{sodFlags.length === 1 ? " was" : "s were"} override-approved and
-              processed by the same person: {sodFlags.map((f) => `${f.userName} · ${formatDateLong(f.weekEnding)}`).join(", ")}. Override
-              approval doesn&apos;t exist as an action yet — this reads the override flag an approved event's payload can already carry,
-              so it's ready as soon as that action is built.
+              <b>Segregation check.</b>{" "}
+              {sodFlags
+                .map((f) => `${f.actorName} override-approved and processed ${f.userName}'s week ending ${formatDateLong(f.weekEnding)}`)
+                .join("; ")}
+              .
             </div>
           </div>
         )}

@@ -114,7 +114,7 @@ export default async function QueuePage({
                               {t.approved?.override ? (
                                 <>
                                   {" "}
-                                  <span className="pill warn">Override</span>
+                                  <span className="pill warn">Approval override</span>
                                 </>
                               ) : null}
                             </td>
