@@ -4,7 +4,7 @@ export function AdminPlaceholder() {
       <div className="card-h">
         <div>
           <h2>Payroll admin</h2>
-          <p>Mark processed and Reports are in the nav above. Users, the override queue, and the tracker land next.</p>
+          <p>Users, the approval queue, Mark processed, the Tracker and Reports are all in the nav above.</p>
         </div>
       </div>
       <div className="card-b">
