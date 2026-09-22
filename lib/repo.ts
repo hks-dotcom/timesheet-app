@@ -616,6 +616,14 @@ export async function getReportableForEntity(entityId: number, userId?: number):
   return result.rows.map(mapTimesheetRow);
 }
 
+// Weeks on file for the admin dashboard tile. A live count(*), derived
+// per request — not a stored counter.
+export async function countTimesheetsForEntity(entityId: number): Promise<number> {
+  const pool = getPool();
+  const r = await pool.query<{ n: string }>("select count(*) as n from timesheets where entity_id = $1", [entityId]);
+  return Number(r.rows[0].n);
+}
+
 export interface HourlyUserRow {
   id: number;
   name: string;

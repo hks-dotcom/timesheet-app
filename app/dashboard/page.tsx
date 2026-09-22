@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/AppShell";
-import { AdminPlaceholder } from "@/components/dashboard/AdminPlaceholder";
+import { AdminDashboard } from "@/components/dashboard/AdminDashboard";
 import { ContributorDashboard } from "@/components/dashboard/ContributorDashboard";
 import { ManagerDashboard } from "@/components/dashboard/ManagerDashboard";
 import { requireUser } from "@/lib/session";
@@ -14,7 +14,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   return (
     <AppShell me={me} active="dashboard" selectedId={selectedId}>
       {me.role === "admin" ? (
-        <AdminPlaceholder />
+        <AdminDashboard me={me} />
       ) : me.role === "manager" ? (
         <ManagerDashboard me={me} />
       ) : (
