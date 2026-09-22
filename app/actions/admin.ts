@@ -19,10 +19,18 @@ const VALID_FUNCTIONS = new Set(Object.keys(FUNCTION_ACCOUNT));
 // HTTP route.
 
 // ---------------------------------------------------------------------------
-// saveUser — function / manager / caps / entity edits (D4: entity is
-// stored on the timesheet, not derived, so entity edits are unrestricted
-// per the mock). Each change appends ONE admin_log line listing everything
-// that changed; no notification (matching the mock).
+// saveUser — function / manager / caps / entity edits. Each change appends
+// ONE admin_log line listing everything that changed; no notification
+// (matching the mock).
+//
+// F3: entity is stored on each timesheet row, so moving someone between
+// entities would leave their filed weeks pointing at the old entity while
+// they point at the new one — and there is no cross-entity manager in this
+// app to approve or process the orphaned side. Transfers are out of scope,
+// so the entity of anyone who already has at least one timesheet is fixed:
+// rejected here, before anything is written, and disabled in the Edit
+// modal with that reason. Someone with no timesheets at all can still be
+// moved, because there is nothing to orphan.
 // ---------------------------------------------------------------------------
 
 export async function saveUserCore(me: SessionUser, formData: FormData): Promise<AdminState> {
@@ -51,10 +59,24 @@ export async function saveUserCore(me: SessionUser, formData: FormData): Promise
       weekly_cap: string;
       daily_cap: string;
       manager_id: string | null;
-    }>("select entity_id, name, function, weekly_cap, daily_cap, manager_id from users where id = $1", [userId]);
+      timesheet_count: string;
+    }>(
+      `select u.entity_id, u.name, u.function, u.weekly_cap, u.daily_cap, u.manager_id,
+        (select count(*) from timesheets t where t.user_id = u.id) as timesheet_count
+       from users u where u.id = $1`,
+      [userId],
+    );
     const row = result.rows[0];
     if (!row) throw new Error("That user no longer exists.");
     if (Number(row.entity_id) !== me.entityId) throw new Error("That user is not in your entity.");
+
+    // F3: reject before any write, so a rejected save leaves zero rows in
+    // users and zero in admin_log.
+    if (entityId !== Number(row.entity_id) && Number(row.timesheet_count) > 0) {
+      throw new Error(
+        `${row.name} already has ${row.timesheet_count} timesheet${Number(row.timesheet_count) === 1 ? "" : "s"} in this entity. Moving someone between entities is not supported here — their filed weeks would be stranded.`,
+      );
+    }
 
     if (managerId !== null) {
       const mgr = await client.query<{ role: string; entity_id: string; active: boolean }>(

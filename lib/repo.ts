@@ -165,6 +165,7 @@ export interface AdminUserRow {
   currentRate: number | null; // hourly only
   endDate: string | null; // hourly only — the end date in force
   endDateContractRef: string | null;
+  timesheetCount: number; // F3: entity is fixed once any week exists for this person
 }
 
 // The Users screen's list — every person in the admin's own entity,
@@ -184,10 +185,12 @@ export async function getUsersForEntity(entityId: number, activeOnly: boolean): 
     manager_id: string | null;
     manager_name: string | null;
     active: boolean;
+    timesheet_count: string;
   }>(
     `
       select u.id, u.name, u.role, u.function, u.pay_type, u.weekly_cap, u.daily_cap, u.active,
-        u.manager_id, m.name as manager_name
+        u.manager_id, m.name as manager_name,
+        (select count(*) from timesheets t where t.user_id = u.id) as timesheet_count
       from users u
       left join users m on m.id = u.manager_id
       where u.entity_id = $1 ${activeOnly ? "and u.active = true" : ""}
@@ -225,6 +228,7 @@ export async function getUsersForEntity(entityId: number, activeOnly: boolean): 
       currentRate,
       endDate,
       endDateContractRef,
+      timesheetCount: Number(r.timesheet_count),
     });
   }
   return rows;

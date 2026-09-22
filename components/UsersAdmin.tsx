@@ -122,6 +122,11 @@ function EditUserModal({
   // would wrongly tag every row before the newest one as superseded even
   // when it was just an ordinary later raise, not a same-dated correction.
   const currentRate = rateAsOf(rateHistory, todayISO);
+  // F3: entity is stored on each timesheet, and there is no cross-entity
+  // manager to approve or process the weeks a move would strand — so once
+  // anyone has a single filed week their entity is fixed. The server
+  // action rejects the change too; this only saves the round trip.
+  const entityLocked = user.timesheetCount > 0;
   const [entityId, setEntityId] = useState(meEntityId);
   const [fn, setFn] = useState(user.function);
   const [weeklyCap, setWeeklyCap] = useState(user.weeklyCap);
@@ -163,13 +168,23 @@ function EditUserModal({
             <div className="row">
               <label className="field">
                 <span>Entity</span>
-                <select value={entityId} onChange={(e) => setEntityId(Number(e.target.value))}>
+                <select
+                  value={entityId}
+                  disabled={entityLocked}
+                  onChange={(e) => setEntityId(Number(e.target.value))}
+                >
                   {entities.map((e) => (
                     <option key={e.id} value={e.id}>
                       {e.name}
                     </option>
                   ))}
                 </select>
+                {entityLocked && (
+                  <span className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                    Fixed: {user.name} has {user.timesheetCount} timesheet{user.timesheetCount === 1 ? "" : "s"} in this entity, and
+                    transfers are out of scope.
+                  </span>
+                )}
               </label>
               <label className="field">
                 <span>Function</span>
