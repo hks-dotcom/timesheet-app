@@ -31,6 +31,7 @@ export default async function ProcessedPage({ searchParams }: { searchParams: Pr
       amount: Math.round(hours * rate * 100) / 100,
       payRunLabel: `${payRun.payday} run`,
       defaultAccount,
+      overrideApprovedById: t.approved?.override ? t.approvedById : null,
     };
   });
 
@@ -46,7 +47,7 @@ export default async function ProcessedPage({ searchParams }: { searchParams: Pr
             </p>
           </div>
         </div>
-        <MarkProcessed rows={rows} />
+        <MarkProcessed rows={rows} meId={me.id} />
       </div>
     </AppShell>
   );

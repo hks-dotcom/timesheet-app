@@ -17,9 +17,10 @@ export interface ReadyRow {
   amount: number;
   payRunLabel: string;
   defaultAccount: string;
+  overrideApprovedById: number | null; // D7: only set when approved.override is true
 }
 
-export function MarkProcessed({ rows }: { rows: ReadyRow[] }) {
+export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [accounts, setAccounts] = useState<Map<number, string>>(() => new Map(rows.map((r) => [r.id, r.defaultAccount])));
   const [batchIds, setBatchIds] = useState<number[] | null>(null);
@@ -59,6 +60,10 @@ export function MarkProcessed({ rows }: { rows: ReadyRow[] }) {
     const account = accounts.get(r.id) ?? r.defaultAccount;
     byAccount.set(account, roundMoney((byAccount.get(account) ?? 0) + r.amount));
   }
+  // D7: the PREVENTIVE half of the segregation-of-duties check — Reports'
+  // banner (lib/repo.ts's getSodFlags) is the DETECTIVE half, after the
+  // fact. Same condition, checked before it can happen instead of after.
+  const selfOverrideRows = batchRows.filter((r) => r.overrideApprovedById === meId);
 
   if (rows.length === 0) {
     return (
@@ -158,6 +163,13 @@ export function MarkProcessed({ rows }: { rows: ReadyRow[] }) {
             </div>
             <div className="modal-b">
               <p>This records that the pay run has already happened in the payroll system. It does not pay anyone.</p>
+              {selfOverrideRows.length > 0 && (
+                <div className="note bad">
+                  <b>Segregation check.</b> You override-approved {selfOverrideRows.map((r) => r.userName).join(", ")}&rsquo;s week
+                  {selfOverrideRows.length === 1 ? "" : "s"} yourself. Processing it too puts both halves of this in your hands —
+                  this is only a warning, not a block.
+                </div>
+              )}
               <dl className="kv">
                 {batchRows.map((r) => (
                   <div key={r.id} style={{ display: "contents" }}>

@@ -439,6 +439,8 @@ export interface TimesheetSummary {
   userId: number;
   userName: string;
   userFunction: string;
+  managerId: number | null;
+  managerName: string | null;
   weekEnding: string;
   streamId: number;
   streamName: string;
@@ -454,12 +456,14 @@ export interface TimesheetSummary {
   submitted: SubmittedPayload | null;
   approved: ApprovedPayload | null;
   processed: ProcessedPayload | null;
+  approvedById: number | null;
   approvedByName: string | null;
 }
 
 const TIMESHEET_SELECT = `
   select
-    t.id, t.user_id as "userId", u.name as "userName", u.function as "userFunction", t.week_ending::text as "weekEnding",
+    t.id, t.user_id as "userId", u.name as "userName", u.function as "userFunction",
+    u.manager_id as "managerId", mgr.name as "managerName", t.week_ending::text as "weekEnding",
     t.stream_id as "streamId", s.name as "streamName", s.billable, s.default_account as "streamDefaultAccount",
     t.customer_id as "customerId", c.name as "customerName", t.notes, t.draft_hours as "draftHours",
     latest.type as "latestType", latest.at::text as "latestAt",
@@ -467,9 +471,10 @@ const TIMESHEET_SELECT = `
     sub.payload as "submittedPayload",
     appr.payload as "approvedPayload",
     proc.payload as "processedPayload",
-    apprby.name as "approvedByName"
+    apprby.id as "approvedById", apprby.name as "approvedByName"
   from timesheets t
   join users u on u.id = t.user_id
+  left join users mgr on mgr.id = u.manager_id
   join streams s on s.id = t.stream_id
   left join customers c on c.id = t.customer_id
   join lateral (
@@ -488,7 +493,7 @@ const TIMESHEET_SELECT = `
     select payload from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1
   ) proc on true
   left join lateral (
-    select au.name from events ae join users au on au.id = ae.actor_id
+    select au.id, au.name from events ae join users au on au.id = ae.actor_id
     where ae.timesheet_id = t.id and ae.type = 'approved' order by ae.at desc, ae.id desc limit 1
   ) apprby on true
 `;
@@ -501,6 +506,8 @@ function mapTimesheetRow(row: Record<string, unknown>): TimesheetSummary {
     userId: Number(row.userId),
     userName: String(row.userName),
     userFunction: String(row.userFunction),
+    managerId: row.managerId === null ? null : Number(row.managerId),
+    managerName: row.managerName === null ? null : String(row.managerName),
     weekEnding: String(row.weekEnding),
     streamId: Number(row.streamId),
     streamName: String(row.streamName),
@@ -516,6 +523,7 @@ function mapTimesheetRow(row: Record<string, unknown>): TimesheetSummary {
     submitted: (row.submittedPayload as SubmittedPayload | null) ?? null,
     approved: (row.approvedPayload as ApprovedPayload | null) ?? null,
     processed: (row.processedPayload as ProcessedPayload | null) ?? null,
+    approvedById: row.approvedById === null ? null : Number(row.approvedById),
     approvedByName: row.approvedByName === null ? null : String(row.approvedByName),
   };
 }
@@ -571,6 +579,18 @@ export async function getReadyForProcessing(entityId: number): Promise<Timesheet
   return result.rows.map(mapTimesheetRow);
 }
 
+// D6: every submitted timesheet in this entity — payroll admin's override
+// queue. These all belong to a manager; payroll admin isn't in anyone's
+// approval chain, so there is no "own reports" scoping here.
+export async function getSubmittedForEntity(entityId: number): Promise<TimesheetSummary[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `${TIMESHEET_SELECT} where t.entity_id = $1 and latest.type = 'submitted' order by latest.at asc`,
+    [entityId],
+  );
+  return result.rows.map(mapTimesheetRow);
+}
+
 // Approved or processed timesheets for one entity, optionally for one
 // person — Reports' source rows. Pay-run range and status filtering happen
 // afterward in JS via lib/paycalendar.ts, not here, since the pay calendar
@@ -613,9 +633,10 @@ export interface SodFlag {
 
 // Timesheets whose override-approval and processing were done by the same
 // person — the one thing segregation of duties says should never happen.
-// The override-approve action itself doesn't exist in the app yet; this
-// only reads the `override` flag an approved event's payload can carry, so
-// it's ready as soon as that action is built.
+// This is the DETECTIVE control (after the fact, in Reports); the
+// PREVENTIVE half is the warning in the Mark Processed confirm modal
+// (components/MarkProcessed.tsx), which checks the same `override` flag
+// before the second half of the pair can even happen.
 export async function getSodFlags(entityId: number): Promise<SodFlag[]> {
   const pool = getPool();
   const result = await pool.query<{ id: string; user_name: string; week_ending: string; actor_name: string; approved_at: string }>(

@@ -453,3 +453,95 @@ export async function approveBatchAction(_prev: ApproveState, formData: FormData
     client.release();
   }
 }
+
+// D6: payroll admin approving a week directly, bypassing the assigned
+// manager. Writes the SAME approved-event shape a normal approval does
+// (hourly/rateEffectiveFrom/contractRef via the one shared rateAsOf path)
+// plus override: true, a distinct "OV-" batch prefix, and a required
+// comment — never a second, looser event shape for this path. Notifies
+// both the bypassed manager and the timesheet owner.
+export async function overrideApproveCore(me: SessionUser, formData: FormData): Promise<ApproveState> {
+  const timesheetId = Number(formData.get("timesheetId"));
+  const comment = String(formData.get("comment") ?? "").trim();
+
+  if (!Number.isFinite(timesheetId)) return { error: "Missing timesheet." };
+  if (comment.length < 5) return { error: "An override needs a comment (at least 5 characters)." };
+
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    const result = await client.query<{
+      id: string;
+      user_id: string;
+      user_name: string;
+      entity_id: string;
+      week_ending: string;
+      manager_id: string | null;
+      latest_type: string;
+    }>(
+      `
+        select t.id, t.user_id, u.name as user_name, t.entity_id, t.week_ending::text as week_ending, u.manager_id,
+          (select type from events where timesheet_id = t.id order by at desc, id desc limit 1) as latest_type
+        from timesheets t
+        join users u on u.id = t.user_id
+        where t.id = $1
+      `,
+      [timesheetId],
+    );
+    const raw = result.rows[0];
+    if (!raw) throw new Error("That timesheet no longer exists.");
+    const row = {
+      id: Number(raw.id),
+      userId: Number(raw.user_id),
+      userName: raw.user_name,
+      entityId: Number(raw.entity_id),
+      weekEnding: raw.week_ending,
+      managerId: raw.manager_id === null ? null : Number(raw.manager_id),
+      latestType: raw.latest_type,
+    };
+    if (row.entityId !== me.entityId) throw new Error("That timesheet is not in your entity.");
+    const status = statusFromLatestEventType(row.latestType);
+    if (status !== "submitted") throw new Error(`This week is now ${status}, not submitted — refresh and try again.`);
+
+    const rate = await rateAsOfUser(client, row.userId, row.weekEnding);
+    if (!rate) throw new Error("No rate is in force for this person as of their week ending.");
+
+    const batch = `OV-${Date.now().toString(36).toUpperCase()}`;
+    await client.query("insert into events (timesheet_id, type, actor_id, payload) values ($1, 'approved', $2, $3)", [
+      row.id,
+      me.id,
+      JSON.stringify({ hourly: rate.hourly, rateEffectiveFrom: rate.effectiveFrom, contractRef: rate.contractRef, override: true, batch, comment }),
+    ]);
+    await client.query("insert into notifications (user_id, text, target) values ($1, $2, $3)", [
+      row.userId,
+      `Your week ending ${row.weekEnding} was approved by payroll.`,
+      JSON.stringify({ timesheetId: row.id }),
+    ]);
+    if (row.managerId !== null) {
+      await client.query("insert into notifications (user_id, text, target) values ($1, $2, $3)", [
+        row.managerId,
+        `${me.name} override-approved ${row.userName}'s week ending ${row.weekEnding}.`,
+        JSON.stringify({ timesheetId: row.id }),
+      ]);
+    }
+
+    await client.query("commit");
+
+    revalidatePath("/dashboard");
+    revalidatePath("/timesheets");
+    revalidatePath("/processed");
+    return { ok: true, batch };
+  } catch (err) {
+    await client.query("rollback");
+    return { error: err instanceof Error ? err.message : "Override approval failed. Nothing was changed." };
+  } finally {
+    client.release();
+  }
+}
+
+export async function overrideApproveAction(_prev: ApproveState, formData: FormData): Promise<ApproveState> {
+  const me = await requireUser(["admin"]);
+  return overrideApproveCore(me, formData);
+}
