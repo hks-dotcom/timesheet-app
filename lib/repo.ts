@@ -206,9 +206,17 @@ export interface ApprovedPayload {
   batch?: string;
 }
 
+export interface ResolverInputs {
+  userFunction: string;
+  billable: boolean;
+  streamDefaultAccount: string | null;
+}
+
 export interface ProcessedPayload {
   expenseAccount: string; // the account actually recorded — may be an override
   resolvedAccount: string; // what the resolver rule would have said, snapshotted for audit
+  resolverInputs: ResolverInputs; // the inputs the resolver was actually run against, frozen — a later
+  // function/stream change can never make this row look wrong in hindsight
   payRun: { payday: string; due: string; cutoff: string };
   amount: number;
 }

@@ -68,6 +68,7 @@ export async function markProcessedBatchAction(_prev: ProcessState, formData: Fo
       weekEnding: r.week_ending,
       latestType: r.latest_type,
       resolvedAccount: resolveExpenseAccount({ billable: r.billable, defaultAccount: r.default_account }, r.function),
+      resolverInputs: { userFunction: r.function, billable: r.billable, streamDefaultAccount: r.default_account },
     }));
 
     if (rows.length !== ids.length) {
@@ -95,6 +96,7 @@ export async function markProcessedBatchAction(_prev: ProcessState, formData: Fo
         JSON.stringify({
           expenseAccount: account,
           resolvedAccount: row.resolvedAccount,
+          resolverInputs: row.resolverInputs,
           payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },
           amount,
           batch,

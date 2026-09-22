@@ -79,44 +79,47 @@ async function checkProcessedAmounts(): Promise<CheckResult> {
   };
 }
 
-// Every processed event snapshots resolvedAccount (what the resolver rule
-// says) alongside expenseAccount (what was actually recorded, which may be
-// a deliberate override). This checks resolvedAccount itself is correct —
-// via lib/accounts.ts's real resolveExpenseAccount, not a SQL
-// re-implementation — for every row, billable and non-billable alike,
-// regardless of whether that row was overridden.
+// Every processed event snapshots resolverInputs (the owner's function,
+// the stream's billable flag and default account, AS THEY WERE at
+// processing time) alongside resolvedAccount (what the resolver said for
+// those inputs) and expenseAccount (what was actually recorded, which may
+// be a deliberate override). This checks resolvedAccount against
+// resolveExpenseAccount(resolverInputs) — the frozen inputs, never today's
+// streams/users tables — so a later function or stream change can never
+// make a historical row look wrong. Covers every row, billable and
+// non-billable alike, regardless of whether that row was overridden.
 async function checkResolvedAccounts(): Promise<CheckResult> {
   const pool = getPool();
   const result = await pool.query<{
     id: string;
-    billable: boolean;
-    default_account: string | null;
-    function: string;
     expense_account: string | null;
     resolved_account: string | null;
+    resolver_inputs: { userFunction: string; billable: boolean; streamDefaultAccount: string | null } | null;
   }>(`
-    select t.id, s.billable, s.default_account, u.function,
+    select t.id,
       (select payload->>'expenseAccount' from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1) as expense_account,
-      (select payload->>'resolvedAccount' from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1) as resolved_account
+      (select payload->>'resolvedAccount' from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1) as resolved_account,
+      (select payload->'resolverInputs' from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1) as resolver_inputs
     from timesheets t
-    join streams s on s.id = t.stream_id
-    join users u on u.id = t.user_id
     where exists (select 1 from events e where e.timesheet_id = t.id and e.type = 'processed')
   `);
 
   let failures = 0;
   let overridden = 0;
   for (const row of result.rows) {
-    if (row.expense_account === null || row.resolved_account === null) {
+    if (row.expense_account === null || row.resolved_account === null || row.resolver_inputs === null) {
       failures++;
       continue;
     }
-    const expected = resolveExpenseAccount({ billable: row.billable, defaultAccount: row.default_account }, row.function);
+    const expected = resolveExpenseAccount(
+      { billable: row.resolver_inputs.billable, defaultAccount: row.resolver_inputs.streamDefaultAccount },
+      row.resolver_inputs.userFunction,
+    );
     if (expected !== row.resolved_account) failures++;
     if (row.expense_account !== row.resolved_account) overridden++;
   }
   return {
-    name: `processed resolvedAccount matches resolveExpenseAccount for every row (${overridden} currently overridden)`,
+    name: `processed resolvedAccount matches resolveExpenseAccount(snapshotted resolverInputs) (${overridden} currently overridden)`,
     failures,
     total: result.rows.length,
   };

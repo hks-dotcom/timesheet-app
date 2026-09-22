@@ -709,6 +709,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         payload: {
           expenseAccount: resolvedAccount,
           resolvedAccount,
+          resolverInputs: { userFunction: u.function, billable: stream.billable, streamDefaultAccount: stream.defaultAccount },
           payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },
           amount,
         },
