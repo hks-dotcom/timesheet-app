@@ -112,14 +112,22 @@ async function runVerifications(client: PoolClient) {
       `,
     },
     {
-      name: "processed events whose account differs from the resolution rule",
+      // resolvedAccount, NOT expenseAccount. resolvedAccount is what the
+      // rule said and must always match it. expenseAccount is what the
+      // admin actually recorded, and Mark Processed deliberately lets
+      // them pick a different head — the seed now contains one such week
+      // per entity so Reports' "Account override" pill is visible from a
+      // fresh reset, and comparing expenseAccount here would call that
+      // legitimate override a data error. The next check keeps
+      // expenseAccount honest by requiring it to be a real account code.
+      name: "processed events whose RESOLVED account differs from the resolution rule",
       sql: `
         select count(*) from events e
         join timesheets t on t.id = e.timesheet_id
         join streams s on s.id = t.stream_id
         join users u on u.id = t.user_id
         where e.type = 'processed'
-          and (e.payload->>'expenseAccount') is distinct from (
+          and (e.payload->>'resolvedAccount') is distinct from (
             case
               when s.billable then s.default_account
               else (
@@ -134,6 +142,14 @@ async function runVerifications(client: PoolClient) {
               )
             end
           )
+      `,
+    },
+    {
+      name: "processed events whose recorded expense account is not a real account code",
+      sql: `
+        select count(*) from events e
+        where e.type = 'processed'
+          and (e.payload->>'expenseAccount') not in (select code from accounts)
       `,
     },
     {

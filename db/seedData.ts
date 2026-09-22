@@ -373,8 +373,22 @@ const ROSTER: RosterUser[] = [
       { weeksAgo: 57, hourly: 55.0, contractRef: "CTR-2025-0037" },
       { weeksAgo: 18, hourly: 59.5, contractRef: "CTR-2026-0219" },
     ],
-    contractEndInWeeks: 45, endDateContractRef: "CTR-2026-0219",
+    // Ends 3 weeks out: NexCore's "contract ending soon" case, the
+    // counterpart to Bob Ellis's in CoreThread, so the admin dashboard
+    // tile and the Users end-date column have something in each entity.
+    contractEndInWeeks: 3, endDateContractRef: "CTR-2026-0219",
   },
+];
+
+// One processed week per entity whose expense account the admin chose
+// by hand instead of taking the resolver's default — so the "Account
+// override" pill in Reports is visible from a fresh reset. Identified by
+// person and by how many weeks before the anchor the week ends, so the
+// same week is picked on every rebuild.
+const ACCOUNT_OVERRIDE: { userKey: string; weeksAgo: number; account: string }[] = [
+  { userKey: "daniel", weeksAgo: 6, account: "6200" },
+  // Not Jason's week 6 — that is the deliberate SoD case, left exactly as it was.
+  { userKey: "sunita", weeksAgo: 6, account: "6200" },
 ];
 
 const PAYROLL_ADMIN_BY_ENTITY: Record<string, string> = {
@@ -565,6 +579,24 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     jason?: { timesheetId: number; weekEnding: string; approvedAt: string };
   } = {};
 
+  // One still-submitted and one still-approved week per entity, captured
+  // as the roster is walked, so the showcase notifications below can
+  // point at a real event of the right kind for each role: the manager
+  // hears about something actually waiting on them, the payroll admin
+  // about something actually ready to process, the contributor about
+  // their own week. Nothing is invented — every notification names an
+  // event that exists.
+  interface ShowcaseWeek {
+    timesheetId: number;
+    weekEnding: string;
+    userId: number;
+    userName: string;
+    managerId: number;
+    payrollAdminId: number;
+    at: string;
+  }
+  const showcase: Record<string, { submitted?: ShowcaseWeek; approved?: ShowcaseWeek }> = {};
+
   for (const u of ROSTER) {
     if (u.payType !== "hourly" || u.hireWeeksAgo === undefined || !u.streamKey) continue;
 
@@ -738,7 +770,14 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         scenario.bob = { timesheetId, weekEnding, returnedAt, resubmittedAt };
       }
 
-      if (bucket === "submitted") continue;
+      if (bucket === "submitted") {
+        const slot = (showcase[u.entityKey] ??= {});
+        slot.submitted = {
+          timesheetId, weekEnding, userId, userName: u.name, managerId,
+          payrollAdminId, at: lastSubmitAt,
+        };
+        continue;
+      }
 
       // approval
       const approverId = isOverride ? payrollAdminId : managerId;
@@ -765,15 +804,31 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         scenario.jason = { timesheetId, weekEnding, approvedAt };
       }
 
-      if (bucket === "approved") continue;
+      if (bucket === "approved") {
+        const slot = (showcase[u.entityKey] ??= {});
+        // Skip the override-approved week: payroll approved that one
+        // themselves, so "ready for payroll, approved by the manager" is
+        // not what happened there.
+        if (!isOverride) {
+          slot.approved = {
+            timesheetId, weekEnding, userId, userName: u.name, managerId,
+            payrollAdminId, at: approvedAt,
+          };
+        }
+        continue;
+      }
 
       // processed — amount comes only from the two snapshots already
       // taken: the hours on the submitted event and the rate on the
       // approved event, never recomputed from the live rate table.
-      // The seed never overrides the resolver's choice, so expenseAccount
-      // and resolvedAccount are always the same value here — a real admin
-      // session can diverge them via Mark Processed's dropdown.
+      // expenseAccount is what the admin actually recorded; resolvedAccount
+      // is what the rule said for the inputs at the time. They are the
+      // same except on the ACCOUNT_OVERRIDE weeks, where the admin picked
+      // a different head by hand — exactly what Mark Processed's dropdown
+      // lets them do, and what Reports' "Account override" pill reports.
       const resolvedAccount = resolveExpenseAccount(stream, u.function);
+      const override = ACCOUNT_OVERRIDE.find((o) => o.userKey === u.key && o.weeksAgo === weeksAgo);
+      const expenseAccount = override && override.account !== resolvedAccount ? override.account : resolvedAccount;
       const amount = roundMoney(roundedTotal * rate.hourly);
       const processedAt = maxDT(atTime(payRun.payday, 10, 0), shiftHours(approvedAt, 24));
       events.push({
@@ -783,7 +838,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         actorId: payrollAdminId,
         at: processedAt,
         payload: {
-          expenseAccount: resolvedAccount,
+          expenseAccount,
           resolvedAccount,
           resolverInputs: { userFunction: u.function, billable: stream.billable, streamDefaultAccount: stream.defaultAccount },
           payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },
@@ -853,6 +908,47 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       text: `Jason Walker's week ending ${scenario.jason.weekEnding} was override-approved by payroll while you were out.`,
       target: { timesheetId: scenario.jason.timesheetId, weekEnding: scenario.jason.weekEnding },
     });
+  }
+
+  // Showcase notifications: one UNREAD for a contributor, a manager and
+  // a payroll admin in EACH entity, so a visitor arriving at a fresh
+  // reset sees the bell badge from whichever role they pick. Every one
+  // describes a real seeded event and carries a target that resolves to
+  // a page that viewer may actually open — the manager's to the queue
+  // entry waiting on them, the admin's to the approved week waiting to
+  // be processed, the contributor's to their own week.
+  for (const entityKey of Object.keys(showcase).sort()) {
+    const slot = showcase[entityKey];
+    if (slot.submitted) {
+      const w = slot.submitted;
+      notifications.push({
+        id: nextNotificationId(),
+        userId: w.managerId,
+        at: shiftHours(w.at, 1),
+        readAt: null,
+        text: `${w.userName} submitted the week ending ${w.weekEnding} — it is waiting on you.`,
+        target: { timesheetId: w.timesheetId, weekEnding: w.weekEnding },
+      });
+    }
+    if (slot.approved) {
+      const w = slot.approved;
+      notifications.push({
+        id: nextNotificationId(),
+        userId: w.payrollAdminId,
+        at: shiftHours(w.at, 1),
+        readAt: null,
+        text: `${w.userName}'s week ending ${w.weekEnding} was approved and is ready for payroll.`,
+        target: { timesheetId: w.timesheetId, weekEnding: w.weekEnding },
+      });
+      notifications.push({
+        id: nextNotificationId(),
+        userId: w.userId,
+        at: shiftHours(w.at, 2),
+        readAt: null,
+        text: `Your week ending ${w.weekEnding} was approved.`,
+        target: { timesheetId: w.timesheetId, weekEnding: w.weekEnding },
+      });
+    }
   }
 
   notes.push(
