@@ -42,6 +42,45 @@ component library. Keep dependencies minimal.
 11. **The demo reset and the on-request staleness reseed both call
     `db/seedWrite.ts`'s `writeSeed()` directly — the same function
     `db/seed.ts` uses, not a copy.**
+12. **`rates`, `admin_log` and `contract_terms` are append-only too**,
+    same trigger pattern as `events` (raises on `UPDATE` and `DELETE`).
+    A rate typo is corrected by inserting a new row with the same
+    `effective_from` as the row it corrects — never by editing or
+    deleting the original. `rateAsOf` breaks ties on `effective_from` by
+    the latest `recorded_at`, so the correction wins. One shared
+    `rateAsOf` (in `lib/domain.ts`) is used everywhere a rate is looked
+    up — approval, the seed, Reports' recompute, and the Users screen —
+    never a second copy of that lookup.
+13. **Every hourly person's rate carries a contract reference**
+    (`contract_ref`, `contract_signed_on` on `rates`, required, never
+    blank) and approval snapshots that reference onto the `approved`
+    event alongside the rate, for the same reason the rate itself is
+    snapshotted: what was actually paid must never depend on what the
+    contract terms look like today.
+14. **Contract end dates live in their own append-only table**
+    (`contract_terms`; the end date in force is the latest recorded row
+    for that user). A week is submittable only if its Monday is on or
+    before the end date in force; a week straddling the end date rejects
+    hours on any day after it. A manager may only extend their own
+    direct reports' end dates (never shorten, never set); payroll admin
+    can set, extend, or shorten anyone's in their entity.
+15. **All money arithmetic goes through `lib/format.ts`'s `roundMoney`**
+    — never an inline `Math.round(x * 100) / 100` or a raw
+    floating-point multiply, anywhere the result is money.
+16. **Every page is dynamic** (`export const dynamic = "force-dynamic"`)
+    — nothing in this app is statically prerendered.
+17. **Proofs for new work are scripts that call the server actions'
+    logic directly** (never a temporary HTTP route) — server actions are
+    split into a directly-callable core (takes the acting user
+    explicitly) and a thin `"use server"` wrapper that resolves the
+    session and delegates. Scratch data a proof creates is cleaned up via
+    the demo reset, never by disabling a trigger.
+18. **Clean room**: nothing from any real employer's systems goes into
+    this repo — no code, schema, real people, real customers or company
+    names — anywhere in this repo, its git history, or its seeded data.
+    All data here is fictional. The list of terms to sweep for lives
+    outside the repo, in the prompts that drive this work, never in a
+    file the repo carries.
 
 ## Commands
 
