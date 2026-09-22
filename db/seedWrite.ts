@@ -65,9 +65,8 @@ export async function writeSeed(client: PoolClient, seed: SeedResult): Promise<v
     await insertBatch(
       client,
       "users",
-      // weekly_cap / daily_cap are deliberately NOT written: caps live in
-      // cap_terms now, and leaving the retired columns null
-      // makes a stale value impossible to mistake for the caps in force.
+      // No caps written here: they live in cap_terms, inserted below,
+      // so every cap in force carries the contract that agreed it.
       ["id", "name", "entity_id", "role", "pay_type", "function", "active"],
       seed.users.map((u) => [u.id, u.name, u.entityId, u.role, u.payType, u.function, u.active]),
     );

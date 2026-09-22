@@ -46,8 +46,8 @@ create table if not exists users (
                 'R&D', 'Sales & Marketing', 'G&A'
               )),
   manager_id  bigint references users (id),
-  weekly_cap  numeric(5, 2) not null default 40,
-  daily_cap   numeric(4, 2) not null default 8,
+  -- No caps here: a person's weekly and daily caps live in cap_terms,
+  -- so a cap in force always carries the contract that agreed it.
   active      boolean not null default true
 );
 
@@ -330,23 +330,14 @@ create trigger cap_terms_no_delete
   before delete on cap_terms
   for each row execute function no_update_no_delete();
 
--- users.weekly_cap / users.daily_cap are RETIRED by cap_terms above.
--- Nothing anywhere reads or writes them now, and the seed leaves them
--- null. They are still DEFINED here on purpose: local proofs, preview
--- deployments and production share one database, so until this branch
--- merges the code on main still runs a check that selects these two
--- columns. Removing the definitions would break that code the moment
--- anyone built a fresh database from this file. The drop
--- ("alter table users drop column if exists ...") belongs in a
--- separate pass, once no deployed code mentions them.
---
--- Relaxing NOT NULL and the default is idempotent — a no-op once
--- applied — and makes a stale leftover value impossible to mistake for
--- the caps in force.
-alter table users alter column weekly_cap drop not null;
-alter table users alter column daily_cap  drop not null;
-alter table users alter column weekly_cap drop default;
-alter table users alter column daily_cap  drop default;
+-- users.weekly_cap / users.daily_cap were where caps lived before
+-- cap_terms. Nothing reads or writes them any more, so they go. This
+-- reaches the same end state whichever way it is run: on a database
+-- that already has them the drops remove them, and on a fresh one the
+-- users table above never had them and the drops are no-ops. "if
+-- exists" is what keeps the file rerunnable.
+alter table users drop column if exists weekly_cap;
+alter table users drop column if exists daily_cap;
 
 -- Singleton table (the boolean PK constrained to true allows exactly one
 -- row) holding the seed's anchor Friday and when the demo was last rebuilt.

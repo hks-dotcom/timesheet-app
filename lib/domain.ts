@@ -149,8 +149,8 @@ export interface CapTermRow {
 // The caps IN FORCE for a person: the latest recorded cap_terms row,
 // exactly like latestContractTerm — an append-only log, so the newest
 // thing anyone recorded wins. This is the ONE function that answers
-// "what are this person's caps"; nothing reads users.weekly_cap /
-// users.daily_cap any more, and a cap can never be in force without the
+// "what are this person's caps" — caps are not columns on users at all,
+// they are rows here — and a cap can never be in force without the
 // contract reference that agreed it. Returns null only for someone with
 // no cap_terms row at all (the seed gives every hourly person one, and
 // db/seed.ts checks it).
