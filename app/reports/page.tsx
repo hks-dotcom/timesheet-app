@@ -187,9 +187,21 @@ export default async function ReportsPage({
                         {r.accountOverridden && (
                           <>
                             {" "}
-                            <span className="pill warn" title="Differs from the resolver's default">
+                            <span
+                              className="pill warn"
+                              title={
+                                r.accountOverrideReason
+                                  ? `Differs from the resolver's default: ${r.accountOverrideReason}`
+                                  : "Differs from the resolver's default"
+                              }
+                            >
                               Account override
                             </span>
+                            {r.accountOverrideReason && (
+                              <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                                {r.accountOverrideReason}
+                              </div>
+                            )}
                           </>
                         )}
                       </td>

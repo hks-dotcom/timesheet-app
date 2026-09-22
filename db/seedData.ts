@@ -408,10 +408,20 @@ function overdueWeeksAgo(anchorFriday: string, todayISO: string): number | null 
   return null;
 }
 
-const ACCOUNT_OVERRIDE: { userKey: string; weeksAgo: number; account: string }[] = [
-  { userKey: "daniel", weeksAgo: 6, account: "6200" },
+const ACCOUNT_OVERRIDE: { userKey: string; weeksAgo: number; account: string; reason: string }[] = [
+  {
+    userKey: "daniel",
+    weeksAgo: 6,
+    account: "6200",
+    reason: "Internal tooling week, booked to G&A at the finance lead's request.",
+  },
   // Not Jason's week 6 — that is the deliberate SoD case, left exactly as it was.
-  { userKey: "sunita", weeksAgo: 6, account: "6200" },
+  {
+    userKey: "sunita",
+    weeksAgo: 6,
+    account: "6200",
+    reason: "Company onboarding week; not chargeable to the product line.",
+  },
 ];
 
 // ---------------------------------------------------------------------
@@ -889,6 +899,9 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         at: processedAt,
         payload: {
           expenseAccount,
+          // Present only when the admin overruled the rule, mirroring
+          // what markProcessedBatchCore writes.
+          ...(expenseAccount !== resolvedAccount ? { accountOverrideReason: override!.reason } : {}),
           resolvedAccount,
           resolverInputs: { userFunction: u.function, billable: stream.billable, streamDefaultAccount: stream.defaultAccount },
           payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },

@@ -153,6 +153,18 @@ async function runVerifications(client: PoolClient) {
       `,
     },
     {
+      // An account override is a person overruling the rule, so it has
+      // to say why — the same bar an approval override's comment has to
+      // clear, and markProcessedBatchCore enforces it on every new one.
+      name: "processed events that override the expense account without a reason",
+      sql: `
+        select count(*) from events e
+        where e.type = 'processed'
+          and (e.payload->>'expenseAccount') is distinct from (e.payload->>'resolvedAccount')
+          and coalesce(length(trim(e.payload->>'accountOverrideReason')), 0) < 5
+      `,
+    },
+    {
       name: "timesheets whose customer belongs to a different entity than the timesheet",
       sql: `
         select count(*) from timesheets t

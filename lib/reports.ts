@@ -33,6 +33,7 @@ export interface ReportRow {
   pay: number;
   expenseAccount: string | null; // blank until processed — never a resolver default
   accountOverridden: boolean; // chosen account differs from the resolver's default, snapshotted on the processed event
+  accountOverrideReason: string | null; // why, required at processing time whenever it differs
   payRun: PayRun;
   approvedByName: string | null;
   override: boolean; // approval override (approved by payroll instead of the manager)
@@ -73,6 +74,7 @@ export function buildReportRows(
       pay,
       expenseAccount: t.processed ? t.processed.expenseAccount : null,
       accountOverridden: t.processed ? t.processed.expenseAccount !== t.processed.resolvedAccount : false,
+      accountOverrideReason: t.processed?.accountOverrideReason ?? null,
       payRun,
       approvedByName: t.approvedByName,
       override: Boolean(t.approved?.override),

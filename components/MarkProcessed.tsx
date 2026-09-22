@@ -23,6 +23,9 @@ export interface ReadyRow {
 export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [accounts, setAccounts] = useState<Map<number, string>>(() => new Map(rows.map((r) => [r.id, r.defaultAccount])));
+  // Why this row is going somewhere other than where the rule put it.
+  // Only asked for, and only sent, when the two actually differ.
+  const [reasons, setReasons] = useState<Map<number, string>>(() => new Map());
   const [batchIds, setBatchIds] = useState<number[] | null>(null);
 
   const [state, dispatch, pending] = useActionState<ProcessState, FormData>(markProcessedBatchAction, null);
@@ -53,6 +56,17 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
     setAccounts((prev) => new Map(prev).set(id, account));
   }
 
+  function setReason(id: number, reason: string) {
+    setReasons((prev) => new Map(prev).set(id, reason));
+  }
+
+  const chosenAccount = (r: ReadyRow) => accounts.get(r.id) ?? r.defaultAccount;
+  const isOverridden = (r: ReadyRow) => chosenAccount(r) !== r.defaultAccount;
+  const reasonOf = (r: ReadyRow) => (reasons.get(r.id) ?? "").trim();
+  // The same floor the server applies. The server is the one that
+  // decides; this only saves the round trip and names the row early.
+  const ACCOUNT_REASON_MIN = 5;
+
   const batchRows = batchIds ? rows.filter((r) => batchIds.includes(r.id)) : [];
   const grandTotal = roundMoney(batchRows.reduce((sum, r) => sum + r.amount, 0));
   const byAccount = new Map<string, number>();
@@ -64,6 +78,7 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
   // banner (lib/repo.ts's getSodFlags) is the DETECTIVE half, after the
   // fact. Same condition, checked before it can happen instead of after.
   const selfOverrideRows = batchRows.filter((r) => r.overrideApprovedById === meId);
+  const unexplained = batchRows.filter((r) => isOverridden(r) && reasonOf(r).length < ACCOUNT_REASON_MIN);
 
   if (rows.length === 0) {
     return (
@@ -129,13 +144,23 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
                   <td className="r num">{formatMoney(r.amount)}</td>
                   <td>{r.payRunLabel}</td>
                   <td>
-                    <select value={accounts.get(r.id) ?? r.defaultAccount} onChange={(e) => setAccount(r.id, e.target.value)}>
+                    <select value={chosenAccount(r)} onChange={(e) => setAccount(r.id, e.target.value)}>
                       {ACCOUNTS.map((a) => (
                         <option key={a.code} value={a.code}>
                           {a.code} · {a.name}
                         </option>
                       ))}
                     </select>
+                    {isOverridden(r) && (
+                      <input
+                        type="text"
+                        value={reasons.get(r.id) ?? ""}
+                        onChange={(e) => setReason(r.id, e.target.value)}
+                        placeholder={`Why not ${r.defaultAccount}? (required)`}
+                        aria-label={`Reason for overriding ${r.userName}'s expense account`}
+                        style={{ marginTop: 6, width: "100%" }}
+                      />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -178,11 +203,30 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
                     </dt>
                     <dd>
                       {formatHours(r.hours)}h &times; {formatMoney(r.rate)} = {formatMoney(r.amount)} &middot;{" "}
-                      {accounts.get(r.id) ?? r.defaultAccount}
+                      {chosenAccount(r)}
+                      {isOverridden(r) && (
+                        <>
+                          {" "}
+                          <span className="pill bad">Account override</span>
+                          <br />
+                          <span className="muted" style={{ fontSize: 11.5 }}>
+                            {reasonOf(r).length >= ACCOUNT_REASON_MIN
+                              ? reasonOf(r)
+                              : `Needs a reason of at least ${ACCOUNT_REASON_MIN} characters.`}
+                          </span>
+                        </>
+                      )}
                     </dd>
                   </div>
                 ))}
               </dl>
+              {unexplained.length > 0 && (
+                <div className="note bad">
+                  <b>An account override needs a reason.</b> {unexplained.map((r) => r.userName).join(", ")} &mdash; say why the
+                  expense head differs from the one the rule chose, in at least {ACCOUNT_REASON_MIN} characters. The server
+                  refuses the whole batch otherwise.
+                </div>
+              )}
               <p style={{ marginTop: 12, marginBottom: 6 }}>Journal by expense head</p>
               <dl className="kv">
                 {[...byAccount.entries()].map(([code, amount]) => (
@@ -208,13 +252,15 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
               <form
                 action={(formData) => {
                   batchIds.forEach((id) => {
+                    const row = rows.find((r) => r.id === id)!;
                     formData.append("timesheetId", String(id));
-                    formData.append(`account_${id}`, accounts.get(id) ?? rows.find((r) => r.id === id)!.defaultAccount);
+                    formData.append(`account_${id}`, chosenAccount(row));
+                    if (isOverridden(row)) formData.append(`accountReason_${id}`, reasonOf(row));
                   });
                   dispatch(formData);
                 }}
               >
-                <button className="btn primary" type="submit" disabled={pending}>
+                <button className="btn primary" type="submit" disabled={pending || unexplained.length > 0}>
                   {pending ? "Processing…" : "Confirm"}
                 </button>
               </form>

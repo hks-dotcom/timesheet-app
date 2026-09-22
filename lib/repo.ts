@@ -434,6 +434,7 @@ export interface ResolverInputs {
 
 export interface ProcessedPayload {
   expenseAccount: string; // the account actually recorded — may be an override
+  accountOverrideReason?: string; // only when expenseAccount differs from resolvedAccount
   resolvedAccount: string; // what the resolver rule would have said, snapshotted for audit
   resolverInputs: ResolverInputs; // the inputs the resolver was actually run against, frozen — a later
   // function/stream change can never make this row look wrong in hindsight

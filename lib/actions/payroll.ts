@@ -28,6 +28,9 @@ export type ProcessState = { error: string } | { ok: true; batch: string } | nul
 
 const VALID_ACCOUNTS = new Set(ACCOUNTS.map((a) => a.code));
 
+// Same floor an approval override's comment has to clear.
+export const ACCOUNT_REASON_MIN = 5;
+
 // Mark Processed's batch action: one transaction, one processed event per
 // selected timesheet, all sharing a batch reference. Every sheet is
 // re-checked still approved (and still this admin's entity) inside the
@@ -45,12 +48,14 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
   if (ids.length === 0) return { error: "Select at least one timesheet." };
 
   const accountByTimesheetId = new Map<number, string>();
+  const reasonByTimesheetId = new Map<number, string>();
   for (const id of ids) {
     const account = String(formData.get(`account_${id}`) ?? "");
     if (!VALID_ACCOUNTS.has(account)) {
       return { error: `${account || "(missing)"} is not a recognized expense account.` };
     }
     accountByTimesheetId.set(id, account);
+    reasonByTimesheetId.set(id, String(formData.get(`accountReason_${id}`) ?? "").trim());
   }
 
   const pool = getPool();
@@ -67,9 +72,10 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
       billable: boolean;
       default_account: string | null;
       function: string;
+      user_name: string;
     }>(
       `
-        select t.id, t.entity_id, t.week_ending::text as week_ending, s.billable, s.default_account, u.function,
+        select t.id, t.entity_id, t.week_ending::text as week_ending, s.billable, s.default_account, u.function, u.name as user_name,
           (select type from events where timesheet_id = t.id order by at desc, id desc limit 1) as latest_type
         from timesheets t
         join streams s on s.id = t.stream_id
@@ -84,6 +90,7 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
       entityId: Number(r.entity_id),
       weekEnding: r.week_ending,
       latestType: r.latest_type,
+      userName: r.user_name,
       resolvedAccount: resolveExpenseAccount({ billable: r.billable, defaultAccount: r.default_account }, r.function),
       resolverInputs: { userFunction: r.function, billable: r.billable, streamDefaultAccount: r.default_account },
     }));
@@ -96,6 +103,19 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
       const status = statusFromLatestEventType(row.latestType);
       if (status !== "approved") {
         throw new Error(`One of the selected timesheets is now ${status}, not approved. Refresh and try again.`);
+      }
+      // An approval override has needed a comment since D6; an account
+      // override is the same kind of decision — a person overruling the
+      // rule — so it needs the same. Checked here, before the first
+      // insert, and thrown so the whole batch rolls back: a batch is
+      // all-or-nothing, and processing half of it because one row was
+      // unexplained would be worse than refusing the lot. The message
+      // names the row so the admin knows which one to fix.
+      const chosen = accountByTimesheetId.get(row.id)!;
+      if (chosen !== row.resolvedAccount && reasonByTimesheetId.get(row.id)!.length < ACCOUNT_REASON_MIN) {
+        throw new Error(
+          `${row.userName}'s week ending ${row.weekEnding} is going to ${chosen} instead of ${row.resolvedAccount} — say why, in at least ${ACCOUNT_REASON_MIN} characters. Nothing was processed.`,
+        );
       }
     }
 
@@ -113,6 +133,10 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
         JSON.stringify({
           expenseAccount: account,
           resolvedAccount: row.resolvedAccount,
+          // Only present when the admin overruled the resolver, so the
+          // absence of the key means "the rule chose this", not "nobody
+          // said why".
+          ...(account !== row.resolvedAccount ? { accountOverrideReason: reasonByTimesheetId.get(row.id)! } : {}),
           resolverInputs: row.resolverInputs,
           payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },
           amount,
