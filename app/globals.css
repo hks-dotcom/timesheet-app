@@ -562,8 +562,17 @@ tbody tr.clickable {
 tbody tr.clickable:hover td {
   background: var(--sunk);
 }
+/* The mock's selected-row rule, plus a --sunk wash so the selected row
+   is unmistakable when a guided entry lands straight on it — a 3px
+   inset bar alone is easy to miss on a long table. Both are mock
+   tokens. scroll-margin keeps the sticky header off it when a #ts-<id>
+   fragment scrolls it into view. */
 tbody tr.sel td {
   box-shadow: inset 3px 0 0 var(--ink);
+  background: var(--sunk);
+}
+tbody tr[id^="ts-"] {
+  scroll-margin-top: 96px;
 }
 .muted {
   color: var(--ink-3);

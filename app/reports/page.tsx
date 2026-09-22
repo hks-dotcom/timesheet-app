@@ -171,7 +171,7 @@ export default async function ReportsPage({
                   </tr>
                 ) : (
                   rows.map((r) => (
-                    <tr key={r.id}>
+                    <tr key={r.id} id={`ts-${r.id}`} className={selectedId === r.id ? "sel" : undefined}>
                       <td>{formatDateLong(r.weekEnding)}</td>
                       <td>
                         <Link className="rowlink" href={`/reports?${csvQuery}&sel=${r.id}`}>

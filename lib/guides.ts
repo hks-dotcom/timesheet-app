@@ -98,30 +98,42 @@ export async function resolveGuideTarget(guide: GuideId, entityId: number, now: 
     // and an approved week under that earliest rate. Exactly the shape
     // db/seed.ts guarantees.
     const cutoff = new Date(Date.parse(anchor) - EIGHTEEN_MONTHS_WEEKS * 7 * 86_400_000).toISOString().slice(0, 10);
-    const person = await pool.query<{ user_id: string; oldest_week: string }>(
+    // (b) Not just the person — the WEEK. The guide says "open a week
+    // from about eighteen months ago", so it resolves that one week
+    // and lands on it, rather than dropping the visitor into two years
+    // of rows and leaving them to find it. The newest processed week
+    // at or before the eighteen-month cutoff, for the person who has
+    // three or more rate rows with the earliest still in force then —
+    // exactly the shape db/seed.ts guarantees.
+    const found = await pool.query<{ user_id: string; timesheet_id: string; week_ending: string }>(
       `
-        select r.user_id, min(t.week_ending)::text as oldest_week
-          from rates r
-          join users u on u.id = r.user_id
-          join timesheets t on t.user_id = r.user_id
+        select t.user_id, t.id as timesheet_id, t.week_ending::text as week_ending
+          from timesheets t
+          join users u on u.id = t.user_id
          where u.entity_id = $1
-           and exists (select 1 from events e where e.timesheet_id = t.id and e.type = 'approved')
            and t.week_ending <= $2::date
-         group by r.user_id
-        having count(distinct r.id) >= 3 and min(r.effective_from) <= $2::date
-         order by r.user_id
+           and (select type from events e where e.timesheet_id = t.id order by e.at desc, e.id desc limit 1) = 'processed'
+           and (
+             select count(*) from rates r where r.user_id = t.user_id
+           ) >= 3
+           and (
+             select min(r.effective_from) from rates r where r.user_id = t.user_id
+           ) <= $2::date
+         order by t.week_ending desc, t.id
          limit 1
       `,
       [entityId, cutoff],
     );
-    const row = person.rows[0];
+    const row = found.rows[0];
     if (!row) return null;
 
     // Reports validates `from`/`to` against this same list, so the
     // range has to be built from real paydays, not arbitrary dates.
+    // It still spans the whole history: the point is that the resolved
+    // week sits inside a long range and is still found for you.
     const runs = getRecentPayRuns(todayISO, RUN_WINDOW);
     if (runs.length === 0) return null;
-    const from = runs.find((r) => r.payday >= row.oldest_week) ?? runs[0];
+    const from = runs.find((r) => r.payday >= row.week_ending) ?? runs[0];
     const to = runs[runs.length - 1];
     const q = new URLSearchParams({
       who: row.user_id,
@@ -129,8 +141,11 @@ export async function resolveGuideTarget(guide: GuideId, entityId: number, now: 
       to: to.payday,
       status: "approved",
       recompute: "1",
+      sel: row.timesheet_id,
     });
-    return { userId: admin.id, role: "admin", href: `/reports?${q}` };
+    // The fragment scrolls the row into view; ?sel= highlights it and
+    // opens its trail. Both are resolved here, server-side.
+    return { userId: admin.id, role: "admin", href: `/reports?${q}#ts-${row.timesheet_id}` };
   }
 
   // guide === "trail": a timesheet that went the whole way and still
