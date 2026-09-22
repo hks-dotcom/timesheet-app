@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { fromUTCDate, mostRecentFriday } from "@/lib/dateutil";
-import { contributorActionNeededCount, recentWeekEndings, type WeekActionStatus } from "@/lib/domain";
+import { contributorActionNeededCount, latestContractTerm, recentWeekEndings, weekAllowedByEndDate, weekdayDates, type WeekActionStatus } from "@/lib/domain";
 import { getUpcomingPayRuns } from "@/lib/paycalendar";
-import { getPendingForManager, getReadyForProcessing, listTimesheetsForUser, type Role, type SessionUser } from "@/lib/repo";
+import {
+  getContractTermsForUser,
+  getPendingForManager,
+  getReadyForProcessing,
+  listTimesheetsForUser,
+  type Role,
+  type SessionUser,
+} from "@/lib/repo";
 import { ActivityTrail } from "./ActivityTrail";
 import { ResetDemoControl } from "./ResetDemoControl";
 import { SwitchButton } from "./SwitchButton";
@@ -56,7 +63,10 @@ async function badgesFor(me: SessionUser): Promise<Partial<Record<ActiveTab, num
   const anchor = mostRecentFriday(new Date());
   const sheets = await listTimesheetsForUser(me.id);
   const earliestWeek = sheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
-  const recentWeeks = recentWeekEndings(anchor, earliestWeek);
+  const terms = await getContractTermsForUser(me.id);
+  const endDate = latestContractTerm(terms)?.endDate ?? null;
+  // D9: a week past the contract end date is never something to act on.
+  const recentWeeks = recentWeekEndings(anchor, earliestWeek).filter((we) => weekAllowedByEndDate(weekdayDates(we).mon, endDate));
   const byWeek = new Map<string, WeekActionStatus>(
     sheets.map((t) => [t.weekEnding, { status: t.status, returnedReason: t.returnedReason }]),
   );

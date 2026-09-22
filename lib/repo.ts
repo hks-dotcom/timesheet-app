@@ -120,6 +120,33 @@ export async function getDirectReports(managerId: number): Promise<DirectReport[
   return result.rows.map((r) => ({ id: Number(r.id), name: r.name }));
 }
 
+export interface TeamMemberRow {
+  id: number;
+  name: string;
+  endDate: string | null;
+  endDateContractRef: string | null;
+}
+
+// D10 (manager side): a manager's own direct reports, with the contract
+// end date in force for each — everyone reporting to a manager is hourly
+// by construction (only interns/consultants have managers), so this
+// never needs a pay-type branch the way getUsersForEntity does.
+export async function getDirectReportsWithContracts(managerId: number): Promise<TeamMemberRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{ id: string; name: string }>(
+    "select id, name from users where manager_id = $1 and active = true order by name",
+    [managerId],
+  );
+  const rows: TeamMemberRow[] = [];
+  for (const r of result.rows) {
+    const id = Number(r.id);
+    const terms = await getContractTermsForUser(id);
+    const latest = latestContractTerm(terms);
+    rows.push({ id, name: r.name, endDate: latest?.endDate ?? null, endDateContractRef: latest?.contractRef ?? null });
+  }
+  return rows;
+}
+
 export interface AdminUserRow {
   id: number;
   name: string;

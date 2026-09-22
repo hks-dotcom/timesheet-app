@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { Kpi } from "@/components/Kpi";
+import { MyTeamCard } from "@/components/dashboard/MyTeamCard";
 import { formatDateLong, formatDateTime, formatHours } from "@/lib/format";
-import { getPendingForManager, listTimesheetsForManager, type SessionUser } from "@/lib/repo";
+import { getDirectReportsWithContracts, getPendingForManager, listTimesheetsForManager, type SessionUser } from "@/lib/repo";
 
 export async function ManagerDashboard({ me }: { me: SessionUser }) {
-  const [pending, all] = await Promise.all([getPendingForManager(me.id), listTimesheetsForManager(me.id)]);
+  const [pending, all, team] = await Promise.all([
+    getPendingForManager(me.id),
+    listTimesheetsForManager(me.id),
+    getDirectReportsWithContracts(me.id),
+  ]);
   const approvedCount = all.filter((t) => t.status === "approved").length;
   const processedCount = all.filter((t) => t.status === "processed").length;
 
@@ -73,6 +78,8 @@ export async function ManagerDashboard({ me }: { me: SessionUser }) {
           )}
         </div>
       </div>
+
+      <MyTeamCard team={team} />
     </>
   );
 }

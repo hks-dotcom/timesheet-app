@@ -11,16 +11,33 @@ import {
   blockedDaysFromRows,
   checkHardBlocks,
   describeViolation,
+  latestContractTerm,
   rateAsOf,
   sanitizeHours,
   totalHours,
+  weekAllowedByEndDate,
   weekdayDates,
   windowOf,
   type Hours,
 } from "@/lib/domain";
-import { getActiveCustomersForEntity, getHolidaysByDate, getStreamsForEntity, getTimeOffByDate } from "@/lib/repo";
+import {
+  getActiveCustomersForEntity,
+  getContractTermsForUser,
+  getHolidaysByDate,
+  getStreamsForEntity,
+  getTimeOffByDate,
+  type SessionUser,
+} from "@/lib/repo";
 import { requireUser } from "@/lib/session";
 import { statusFromLatestEventType } from "@/lib/status";
+
+const DAY_LABEL: Record<(typeof DAY_KEYS)[number], string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+};
 
 export type FormState = { error: string } | { ok: true } | null;
 
@@ -149,9 +166,10 @@ export async function saveDraftAction(_prev: FormState, formData: FormData): Pro
 // "Submit for approval": re-saves the draft (so what's submitted matches
 // what's on screen), then runs every hard block on the server before
 // writing the submitted event. Everything here is re-checked regardless
-// of what the UI already validated.
-export async function submitAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const me = await requireUser(["intern", "consultant"]);
+// of what the UI already validated. Split into a directly-callable core
+// (takes the acting user explicitly) and a thin "use server" wrapper, so
+// a proof script can call it without a request context.
+export async function submitCore(me: SessionUser, formData: FormData): Promise<FormState> {
   if (me.payType !== "hourly" || !me.managerId) {
     return { error: "Only hourly people with a manager can submit timesheets." };
   }
@@ -189,7 +207,24 @@ export async function submitAction(_prev: FormState, formData: FormData): Promis
     return { error: "This week is past its cutoff — say why it is late (at least 5 characters)." };
   }
 
-  const dates = Object.values(weekdayDates(weekEnding));
+  // D9: the end date in force gates submission independently of the
+  // window above — a week can be "open" by the pay calendar and still be
+  // past someone's contract.
+  const weekDates = weekdayDates(weekEnding);
+  const terms = await getContractTermsForUser(me.id);
+  const endDate = latestContractTerm(terms)?.endDate ?? null;
+  if (!weekAllowedByEndDate(weekDates.mon, endDate)) {
+    return { error: `This week starts after your contract end date (${endDate}). Ask your manager to extend it.` };
+  }
+  if (endDate !== null) {
+    for (const k of DAY_KEYS) {
+      if (weekDates[k] > endDate && (hours[k] ?? 0) > 0) {
+        return { error: `Your contract ended ${endDate} — ${DAY_LABEL[k]} can't hold hours.` };
+      }
+    }
+  }
+
+  const dates = Object.values(weekDates);
   const [holidays, timeOff] = await Promise.all([getHolidaysByDate(dates), getTimeOffByDate(me.id, dates)]);
   const blocked = blockedDaysFromRows(weekEnding, holidays, timeOff);
 
@@ -259,6 +294,11 @@ export async function submitAction(_prev: FormState, formData: FormData): Promis
   revalidatePath("/dashboard");
   revalidatePath("/queue");
   redirect(`/timesheets?sel=${submittedId}`);
+}
+
+export async function submitAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  const me = await requireUser(["intern", "consultant"]);
+  return submitCore(me, formData);
 }
 
 // "Return with a reason": manager only, single sheet, back to draft.

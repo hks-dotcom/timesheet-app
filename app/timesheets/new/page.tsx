@@ -3,10 +3,11 @@ import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
 import { TimesheetForm } from "@/components/TimesheetForm";
 import { fromUTCDate, mostRecentFriday } from "@/lib/dateutil";
-import { blockedDaysFromRows, recentWeekEndings, weekdayDates, windowOf, ZERO_HOURS } from "@/lib/domain";
+import { blockedDaysFromRows, latestContractTerm, recentWeekEndings, weekAllowedByEndDate, weekdayDates, windowOf, ZERO_HOURS } from "@/lib/domain";
 import { formatDateLong, formatDateShort } from "@/lib/format";
 import {
   getActiveCustomersForEntity,
+  getContractTermsForUser,
   getHolidaysByDate,
   getStreamsForEntity,
   getTimeOffByDate,
@@ -34,9 +35,30 @@ export default async function NewTimesheetPage({
   const myTimesheets = await listTimesheetsForUser(me.id);
   const byWeek = new Map(myTimesheets.map((t) => [t.weekEnding, t]));
   const earliestWeek = myTimesheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
-  const recentWeeks = recentWeekEndings(anchor, earliestWeek); // newest first
+  const allWeeks = recentWeekEndings(anchor, earliestWeek); // newest first
+
+  // D9: a week whose Monday falls after the contract end date in force is
+  // never offered here — not shown, not selectable, not defaulted to.
+  const contractTerms = await getContractTermsForUser(me.id);
+  const endDate = latestContractTerm(contractTerms)?.endDate ?? null;
+  const recentWeeks = allWeeks.filter((we) => weekAllowedByEndDate(weekdayDates(we).mon, endDate));
 
   const rows = recentWeeks.map((we) => ({ weekEnding: we, timesheet: byWeek.get(we) ?? null, window: windowOf(we, todayISO) }));
+
+  if (rows.length === 0) {
+    return (
+      <AppShell me={me} active="new" selectedId={selectedId}>
+        <div className="card">
+          <div className="card-h">
+            <div>
+              <h2>Where you stand</h2>
+              <p>Your contract ended {endDate ? formatDateLong(endDate) : "before any week shown here"}. There&apos;s nothing to file.</p>
+            </div>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   const openDefault = rows.find((r) => !r.timesheet || r.timesheet.status === "draft") ?? rows[0];
   const targetWeek = week && recentWeeks.includes(week) ? week : openDefault.weekEnding;
