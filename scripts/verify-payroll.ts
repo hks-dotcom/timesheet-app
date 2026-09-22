@@ -148,14 +148,16 @@ async function checkPayRuns(): Promise<CheckResult> {
   return { name: "processed pay run matches getPayRunForWeekEnding(week_ending)", failures, total: result.rows.length };
 }
 
-// Not a pass/fail check — the override-approve action doesn't exist yet,
-// so there's nothing wrong with finding zero. This proves the detection
-// query itself runs and reports what it finds, entity by entity, ready
-// for when overrides are built.
+// Not a pass/fail check — a flag here is expected, not a bug, whenever the
+// same person both override-approved and processed a week (the seed
+// deliberately creates one such case). This is the DETECTIVE half of the
+// segregation-of-duties check; the PREVENTIVE half is the warning in Mark
+// Processed's confirm modal (components/MarkProcessed.tsx), before it can
+// happen.
 async function reportSodFlags(): Promise<void> {
   const pool = getPool();
   const entities = await pool.query<{ id: string; name: string }>("select id, name from entities order by name");
-  console.log("\nSegregation-of-duties flags (informational — override-approve doesn't exist as an action yet):");
+  console.log("\nSegregation-of-duties flags (informational):");
   for (const e of entities.rows) {
     const flags = await getSodFlags(Number(e.id));
     if (flags.length === 0) {
