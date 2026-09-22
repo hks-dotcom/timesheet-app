@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
-import { RowLink } from "@/components/RowLink";
+import { TimesheetLink } from "@/components/TimesheetLink";
 import { timesheetHref } from "@/lib/timesheetHref";
 import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
 import { listTimesheetsForUser } from "@/lib/repo";
@@ -90,9 +90,9 @@ export default async function MyTimesheetsPage({
                     const hours = t.submitted?.totalHours ?? Object.values(t.draftHours ?? {}).reduce((a, b) => a + b, 0);
                     const pay = t.approved ? roundMoney(t.approved.hourly * (t.submitted?.totalHours ?? 0)) : null;
                     return (
-                      <tr key={t.id} id={`ts-${t.id}`} className={`rowlink-row${selectedId === t.id ? " sel" : ""}`}>
+                      <tr key={t.id} id={`ts-${t.id}`} className={selectedId === t.id ? "sel" : undefined}>
                         <td>
-                          <RowLink {...timesheetHref(me, t)}>{formatDateLong(t.weekEnding)}</RowLink>
+                          <TimesheetLink {...timesheetHref(me, t)}>{formatDateLong(t.weekEnding)}</TimesheetLink>
                           {t.submitted?.late ? (
                             <>
                               {" "}
@@ -104,7 +104,9 @@ export default async function MyTimesheetsPage({
                         <td>{t.customerName ?? <span className="muted">&mdash;</span>}</td>
                         <td className="r num">{formatHours(hours)}</td>
                         <td>
-                          <StatusMark status={t.status} returnedReason={t.returnedReason} />
+                          <TimesheetLink {...timesheetHref(me, t)}>
+                            <StatusMark status={t.status} returnedReason={t.returnedReason} />
+                          </TimesheetLink>
                         </td>
                         <td className="r num">{t.approved ? formatMoney(t.approved.hourly) : <span className="muted">&mdash;</span>}</td>
                         <td className="r num">{pay !== null ? formatMoney(pay) : <span className="muted">&mdash;</span>}</td>

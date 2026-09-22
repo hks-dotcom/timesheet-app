@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/AppShell";
-import { RowLink } from "@/components/RowLink";
+import { TimesheetLink } from "@/components/TimesheetLink";
 import { StatusMark } from "@/components/StatusMark";
 import { fromUTCDate } from "@/lib/dateutil";
 import type { RateRow } from "@/lib/domain";
@@ -11,6 +11,10 @@ import { buildReportRows, type ReportStatusFilter } from "@/lib/reports";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
+
+// Both linked cells in a row say the same thing about where they go —
+// "Sep 4, 2026" or "Approved" on its own does not.
+const openLabel = (who: string, weekEnding: string) => `Open ${who}'s week ending ${weekEnding}`;
 
 const RUN_WINDOW = 52; // ~2 years, enough to cover the seeded history
 
@@ -171,13 +175,13 @@ export default async function ReportsPage({
                   </tr>
                 ) : (
                   rows.map((r) => (
-                    <tr key={r.id} id={`ts-${r.id}`} className={`rowlink-row${selectedId === r.id ? " sel" : ""}`}>
-                      <td>{formatDateLong(r.weekEnding)}</td>
+                    <tr key={r.id} id={`ts-${r.id}`} className={selectedId === r.id ? "sel" : undefined}>
                       <td>
-                        <RowLink href={`/timesheet/${r.id}`} label={`Open ${r.userName}'s week ending ${r.weekEnding}`}>
-                          {r.userName}
-                        </RowLink>
+                        <TimesheetLink href={`/timesheet/${r.id}`} label={openLabel(r.userName, r.weekEnding)}>
+                          {formatDateLong(r.weekEnding)}
+                        </TimesheetLink>
                       </td>
+                      <td>{r.userName}</td>
                       <td>{r.streamName}</td>
                       <td>{r.customerName ?? "—"}</td>
                       <td className="r num">{formatHours(r.hours)}</td>
@@ -229,7 +233,9 @@ export default async function ReportsPage({
                         )}
                       </td>
                       <td>
-                        <StatusMark status={r.status} />
+                        <TimesheetLink href={`/timesheet/${r.id}`} label={openLabel(r.userName, r.weekEnding)}>
+                          <StatusMark status={r.status} />
+                        </TimesheetLink>
                       </td>
                     </tr>
                   ))
@@ -353,16 +359,17 @@ export default async function ReportsPage({
                   </thead>
                   <tbody>
                     {handoffFile.detail.map((d) => (
-                      <tr key={d.timesheetId} id={`ts-${d.timesheetId}`} className="rowlink-row">
+                      <tr key={d.timesheetId} id={`hf-${d.timesheetId}`}>
                         <td>
-                          <RowLink
-                            href={`/timesheet/${d.timesheetId}`}
-                            label={`Open ${d.userName}'s week ending ${d.weekEnding}`}
-                          >
+                          <TimesheetLink href={`/timesheet/${d.timesheetId}`} label={openLabel(d.userName, d.weekEnding)}>
                             {d.userName}
-                          </RowLink>
+                          </TimesheetLink>
                         </td>
-                        <td>{formatDateLong(d.weekEnding)}</td>
+                        <td>
+                          <TimesheetLink href={`/timesheet/${d.timesheetId}`} label={openLabel(d.userName, d.weekEnding)}>
+                            {formatDateLong(d.weekEnding)}
+                          </TimesheetLink>
+                        </td>
                         <td>{d.streamName}</td>
                         <td>{d.customerName ?? <span className="muted">&mdash;</span>}</td>
                         <td className="r num">{formatHours(d.hours)}</td>

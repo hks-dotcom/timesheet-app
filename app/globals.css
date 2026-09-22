@@ -575,55 +575,23 @@ tbody tr[id^="ts-"] {
   scroll-margin-top: 96px;
 }
 
-/* (c) Whole-row links. The <tr> is the positioning context and the
-   link's ::after is stretched over it, because an <a> cannot contain
-   table cells. Hover and focus both use --sunk, the mock's own
-   clickable-row colour; focus adds a visible ring so keyboard users
-   can see where they are, which hover alone never tells them. */
-tbody tr.rowlink-row {
-  position: relative;
-  cursor: pointer;
+/* A linked cell inside a timesheet row. Underlined on hover and focus
+   so it reads as a link, with a visible focus ring for keyboard use.
+   There is deliberately no whole-row hover wash or pointer cursor: the
+   row as a whole is not clickable, and saying otherwise with the
+   cursor would be a lie the user finds out about by clicking. */
+.tslink {
+  color: inherit;
+  text-decoration: none;
+  border-radius: 3px;
 }
-tbody tr.rowlink-row:hover td {
-  background: var(--sunk);
+.tslink:hover {
+  text-decoration: underline;
 }
-tbody tr.rowlink-row:focus-within td {
-  background: var(--sunk);
-  box-shadow: inset 0 0 0 2px var(--ink-3);
-}
-tbody tr.rowlink-row.sel:focus-within td,
-tbody tr.rowlink-row.sel:hover td {
-  box-shadow: inset 3px 0 0 var(--ink);
-}
-.rowlink-cover::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-.rowlink-cover:focus {
-  outline: none;
-}
-/* Controls and other links in a linked row sit above the cover so they
-   keep working and never navigate. */
-tbody tr.rowlink-row .rowlink-above,
-tbody tr.rowlink-row input,
-tbody tr.rowlink-row select,
-tbody tr.rowlink-row button,
-tbody tr.rowlink-row a:not(.rowlink-cover) {
-  position: relative;
-  z-index: 1;
-}
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.tslink:focus-visible {
+  outline: 2px solid var(--ink-3);
+  outline-offset: 2px;
+  text-decoration: underline;
 }
 .muted {
   color: var(--ink-3);

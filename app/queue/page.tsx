@@ -6,7 +6,7 @@ import { rateAsOf, weekdayDates, ZERO_HOURS } from "@/lib/domain";
 import { formatDateLong, formatDateTime, formatHours, formatMoney, roundMoney } from "@/lib/format";
 import { getApprovedForManager, getBlockedDaysBulk, getPendingForManager, getRatesForUser } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
-import { RowLink } from "@/components/RowLink";
+import { TimesheetLink } from "@/components/TimesheetLink";
 import { timesheetHref } from "@/lib/timesheetHref";
 
 export const dynamic = "force-dynamic";
@@ -101,11 +101,11 @@ export default async function QueuePage({
                         const hours = t.submitted?.totalHours ?? 0;
                         const pay = t.approved ? roundMoney(t.approved.hourly * hours) : null;
                         return (
-                          <tr key={t.id} id={`ts-${t.id}`} className={`rowlink-row${selectedId === t.id ? " sel" : ""}`}>
+                          <tr key={t.id} id={`ts-${t.id}`} className={selectedId === t.id ? "sel" : undefined}>
+                            <td>{t.userName}</td>
                             <td>
-                              <RowLink {...timesheetHref(me, t)}>{t.userName}</RowLink>
+                              <TimesheetLink {...timesheetHref(me, t)}>{formatDateLong(t.weekEnding)}</TimesheetLink>
                             </td>
-                            <td>{formatDateLong(t.weekEnding)}</td>
                             <td className="r num">{formatHours(hours)}</td>
                             <td className="r num">{t.approved ? formatMoney(t.approved.hourly) : "—"}</td>
                             <td className="r num">{pay !== null ? formatMoney(pay) : "—"}</td>
@@ -122,7 +122,9 @@ export default async function QueuePage({
                               {t.approved?.batch ?? ""}
                             </td>
                             <td>
-                              <StatusMark status={t.status} />
+                              <TimesheetLink {...timesheetHref(me, t)}>
+                                <StatusMark status={t.status} />
+                              </TimesheetLink>
                             </td>
                           </tr>
                         );

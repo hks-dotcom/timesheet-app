@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { RowLink } from "@/components/RowLink";
+import { TimesheetLink } from "@/components/TimesheetLink";
 import { timesheetHref } from "@/lib/timesheetHref";
 import { Kpi } from "@/components/Kpi";
 import { MyTeamCard } from "@/components/dashboard/MyTeamCard";
@@ -51,11 +51,13 @@ export async function ManagerDashboard({ me }: { me: SessionUser }) {
                 </thead>
                 <tbody>
                   {pending.map((t) => (
-                    <tr key={t.id} id={`ts-${t.id}`} className="rowlink-row">
+                    <tr key={t.id} id={`ts-${t.id}`}>
                       <td>
-                        <RowLink {...timesheetHref(me, t)}>{t.userName}</RowLink>
+                        <TimesheetLink {...timesheetHref(me, t)}>{t.userName}</TimesheetLink>
                       </td>
-                      <td>{formatDateLong(t.weekEnding)}</td>
+                      <td>
+                        <TimesheetLink {...timesheetHref(me, t)}>{formatDateLong(t.weekEnding)}</TimesheetLink>
+                      </td>
                       <td>
                         {t.streamName}
                         {t.customerName ? ` · ${t.customerName}` : ""}

@@ -3,7 +3,7 @@ import { Kpi } from "@/components/Kpi";
 import { StatusMark } from "@/components/StatusMark";
 import { fromUTCDate } from "@/lib/dateutil";
 import { rateAsOf } from "@/lib/domain";
-import { RowLink } from "@/components/RowLink";
+import { TimesheetLink } from "@/components/TimesheetLink";
 import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
 import { timesheetHref } from "@/lib/timesheetHref";
 import { getRatesForUser, listTimesheetsForUser, type SessionUser } from "@/lib/repo";
@@ -67,15 +67,17 @@ export async function ContributorDashboard({ me }: { me: SessionUser }) {
                     const totalHours = t.submitted?.totalHours ?? Object.values(t.draftHours ?? {}).reduce((a, b) => a + b, 0);
                     const pay = t.approved ? roundMoney(t.approved.hourly * (t.submitted?.totalHours ?? 0)) : null;
                     return (
-                      <tr key={t.id} id={`ts-${t.id}`} className="rowlink-row">
+                      <tr key={t.id} id={`ts-${t.id}`}>
                         <td>
-                          <RowLink {...timesheetHref(me, t)}>{formatDateLong(t.weekEnding)}</RowLink>
+                          <TimesheetLink {...timesheetHref(me, t)}>{formatDateLong(t.weekEnding)}</TimesheetLink>
                         </td>
                         <td>{t.streamName}</td>
                         <td>{t.customerName ?? <span className="muted">&mdash;</span>}</td>
                         <td className="r num">{formatHours(totalHours)}</td>
                         <td>
-                          <StatusMark status={t.status} returnedReason={t.returnedReason} />
+                          <TimesheetLink {...timesheetHref(me, t)}>
+                            <StatusMark status={t.status} returnedReason={t.returnedReason} />
+                          </TimesheetLink>
                         </td>
                         <td className="r num">{pay !== null ? formatMoney(pay) : <span className="muted">&mdash;</span>}</td>
                       </tr>
