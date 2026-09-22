@@ -250,6 +250,84 @@ h3 {
   align-items: center;
   gap: 10px;
 }
+.bell {
+  position: relative;
+}
+.bell-btn {
+  position: relative;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.bell-btn:hover {
+  color: var(--ink);
+}
+.bell-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+}
+.bell-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 340px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 24px 60px -24px rgba(20, 48, 79, 0.5);
+  z-index: 50;
+}
+.bell-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 14px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.bell-item:last-child {
+  border-bottom: 0;
+}
+.bell-item:hover {
+  background: var(--sunk);
+}
+.bell-item.unread {
+  font-weight: 600;
+}
+.bell-item .muted {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.bell-empty {
+  padding: 16px 14px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
 .who .nm {
   font-size: 13px;
   font-weight: 600;

@@ -860,3 +860,24 @@ export async function nextOpenWeekForContributor(userId: number, todayISO: strin
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// notifications
+// ---------------------------------------------------------------------------
+
+export interface NotificationRow {
+  id: number;
+  at: string;
+  text: string;
+  target: Record<string, unknown>;
+  readAt: string | null;
+}
+
+export async function getNotificationsForUser(userId: number, limit = 30): Promise<NotificationRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{ id: string; at: string; text: string; target: Record<string, unknown>; read_at: string | null }>(
+    "select id, at::text as at, text, target, read_at::text as read_at from notifications where user_id = $1 order by at desc, id desc limit $2",
+    [userId, limit],
+  );
+  return result.rows.map((r) => ({ id: Number(r.id), at: r.at, text: r.text, target: r.target, readAt: r.read_at }));
+}

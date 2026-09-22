@@ -64,3 +64,37 @@ export async function chaseAction(_prev: NotifyState, formData: FormData): Promi
   const me = await requireUser(["admin"]);
   return chaseCore(me, formData);
 }
+
+// ---------------------------------------------------------------------------
+// Marking notifications read. `notifications` is not append-only — read_at
+// is ordinary mutable state, not an audit trail — so this is a plain
+// UPDATE, unlike every other write in this file.
+// ---------------------------------------------------------------------------
+
+export async function markNotificationReadCore(me: SessionUser, formData: FormData): Promise<NotifyState> {
+  const notificationId = Number(formData.get("notificationId"));
+  if (!Number.isFinite(notificationId)) return { error: "Missing notification." };
+
+  const pool = getPool();
+  await pool.query("update notifications set read_at = now() where id = $1 and user_id = $2 and read_at is null", [
+    notificationId,
+    me.id,
+  ]);
+  return { ok: true };
+}
+
+export async function markNotificationReadAction(_prev: NotifyState, formData: FormData): Promise<NotifyState> {
+  const me = await requireUser();
+  return markNotificationReadCore(me, formData);
+}
+
+export async function markAllNotificationsReadCore(me: SessionUser): Promise<NotifyState> {
+  const pool = getPool();
+  await pool.query("update notifications set read_at = now() where user_id = $1 and read_at is null", [me.id]);
+  return { ok: true };
+}
+
+export async function markAllNotificationsReadAction(): Promise<NotifyState> {
+  const me = await requireUser();
+  return markAllNotificationsReadCore(me);
+}

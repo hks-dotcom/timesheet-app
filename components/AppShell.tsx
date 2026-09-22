@@ -4,6 +4,7 @@ import { contributorActionNeededCount, latestContractTerm, recentWeekEndings, we
 import { getUpcomingPayRuns } from "@/lib/paycalendar";
 import {
   getContractTermsForUser,
+  getNotificationsForUser,
   getPendingForManager,
   getReadyForProcessing,
   getSubmittedForEntity,
@@ -12,6 +13,7 @@ import {
   type SessionUser,
 } from "@/lib/repo";
 import { ActivityTrail } from "./ActivityTrail";
+import { NotificationBell } from "./NotificationBell";
 import { ResetDemoControl } from "./ResetDemoControl";
 import { SwitchButton } from "./SwitchButton";
 
@@ -132,7 +134,7 @@ export async function AppShell({
   children: React.ReactNode;
 }) {
   const tabs = navFor(me.role);
-  const [rail, badges] = await Promise.all([railFor(me), badgesFor(me)]);
+  const [rail, badges, notifications] = await Promise.all([railFor(me), badgesFor(me), getNotificationsForUser(me.id)]);
 
   return (
     <>
@@ -151,6 +153,7 @@ export async function AppShell({
             ))}
           </nav>
           <div className="who">
+            <NotificationBell notifications={notifications} role={me.role} />
             <div className="nm">
               {me.name}
               <span>{ROLE_LABEL[me.role]}</span>
