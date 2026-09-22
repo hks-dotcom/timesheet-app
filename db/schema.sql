@@ -331,11 +331,18 @@ create trigger cap_terms_no_delete
   for each row execute function no_update_no_delete();
 
 -- users.weekly_cap / users.daily_cap are RETIRED by cap_terms above.
--- Nothing in the app reads them any more and the seed writes NULL, but
--- they are not dropped: this file has to stay additive and safe to
--- rerun against a populated database (rule 10). Relaxing NOT NULL and
--- the default is idempotent — a no-op once applied — and makes a stale
--- leftover value impossible to mistake for the caps in force.
+-- Nothing anywhere reads or writes them now, and the seed leaves them
+-- null. They are still DEFINED here on purpose: local proofs, preview
+-- deployments and production share one database, so until this branch
+-- merges the code on main still runs a check that selects these two
+-- columns. Removing the definitions would break that code the moment
+-- anyone built a fresh database from this file. The drop
+-- ("alter table users drop column if exists ...") belongs in a
+-- separate pass, once no deployed code mentions them.
+--
+-- Relaxing NOT NULL and the default is idempotent — a no-op once
+-- applied — and makes a stale leftover value impossible to mistake for
+-- the caps in force.
 alter table users alter column weekly_cap drop not null;
 alter table users alter column daily_cap  drop not null;
 alter table users alter column weekly_cap drop default;

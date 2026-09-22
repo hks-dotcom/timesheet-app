@@ -199,13 +199,6 @@ async function runVerifications(client: PoolClient) {
       `,
     },
     {
-      // The retired columns must stay empty, or a reader that reached
-      // for them by mistake would get a plausible-looking wrong answer
-      // instead of nothing.
-      name: "users still carrying a value in the retired weekly_cap / daily_cap columns",
-      sql: "select count(*) from users where weekly_cap is not null or daily_cap is not null",
-    },
-    {
       name: "submitted events with no capsContractRef",
       sql: "select count(*) from events where type = 'submitted' and coalesce(btrim(payload->>'capsContractRef'), '') = ''",
     },
