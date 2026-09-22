@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ACCOUNTS, resolveExpenseAccount, type AccountRow } from "../lib/accounts";
 import { addDays, fromUTCDate, mostRecentFriday } from "../lib/dateutil";
-import { rateAsOf as domainRateAsOf, type RateRow as DomainRateRow } from "../lib/domain";
+import { rateAsOf as domainRateAsOf, windowOf, type RateRow as DomainRateRow } from "../lib/domain";
 import { roundMoney } from "../lib/format";
 import { federalHolidaysForYears } from "../lib/holidays";
 import { getMostRecentPastPayRun, getPayRunForWeekEnding, type PayRun } from "../lib/paycalendar";
@@ -385,6 +385,29 @@ const ROSTER: RosterUser[] = [
 // override" pill in Reports is visible from a fresh reset. Identified by
 // person and by how many weeks before the anchor the week ends, so the
 // same week is picked on every rebuild.
+// One person per entity left with a week the Tracker calls Overdue, so
+// the Tracker's Overdue pill and the admin dashboard's "Staff overdue"
+// tile both show something from a fresh reset. Neither is a showcase
+// person for anything else: Ashley Davis's other scenario is the late
+// submission (a different week), and Jason Walker's is the
+// segregation-of-duties case (week 6), both untouched by this.
+const OVERDUE_STAFF = ["ashley", "jason"];
+
+// Which week that is, derived — never a fixed date. Overdue in the
+// Tracker means a week inside the contributor's four-week window that
+// is missing or still a draft and is already past its own cutoff, i.e.
+// windowOf().state is no longer "open". This picks the NEWEST such
+// week, so it is the most actionable one ("late" where the calendar
+// offers one, otherwise "locked"), using the very same windowOf the
+// Tracker uses rather than a second opinion about what overdue means.
+function overdueWeeksAgo(anchorFriday: string, todayISO: string): number | null {
+  for (let w = 1; w <= 3; w++) {
+    const state = windowOf(addDays(anchorFriday, -7 * w), todayISO).state;
+    if (state === "late" || state === "locked") return w;
+  }
+  return null;
+}
+
 const ACCOUNT_OVERRIDE: { userKey: string; weeksAgo: number; account: string }[] = [
   { userKey: "daniel", weeksAgo: 6, account: "6200" },
   // Not Jason's week 6 — that is the deliberate SoD case, left exactly as it was.
@@ -575,6 +598,9 @@ export function buildSeed(now: Date = new Date()): SeedResult {
   // until payroll confirms it. Computed once, up front, so it's the same
   // pay run for every person regardless of where they fall in the roster.
   const mostRecentPastPayRun = getMostRecentPastPayRun(todayISO);
+  // (c) The week the OVERDUE_STAFF are left sitting on, derived from
+  // this run's anchor and today, so it moves with them.
+  const overdueW = overdueWeeksAgo(anchor, todayISO);
 
   const nextTimesheetId = makeIdGen();
   const nextEventId = makeIdGen();
@@ -707,6 +733,14 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       } else {
         bucket = chance(rng, 0.5) ? "draft" : "submitted";
       }
+
+      // (c) …except for the one week per entity deliberately left
+      // overdue. Forced last so it wins over whatever the rules above
+      // chose, and only when this week is not already carrying one of
+      // the other scenarios.
+      const isOverdue =
+        overdueW !== null && weeksAgo === overdueW && OVERDUE_STAFF.includes(u.key) && !isReturned && !isOverride && !isLate;
+      if (isOverdue) bucket = "draft";
 
       const timesheetId = nextTimesheetId();
       timesheets.push({
