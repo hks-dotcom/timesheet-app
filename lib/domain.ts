@@ -103,6 +103,42 @@ export function recentWeekEndings(anchorFriday: string, earliestWeekEnding: stri
 }
 
 // ---------------------------------------------------------------------------
+// contributor "needs your attention" count — the nav badge on "New
+// timesheet". A minimal local shape, not TimesheetSummary, so this module
+// stays DB-free and free of a circular import with lib/repo.ts.
+// ---------------------------------------------------------------------------
+
+export interface WeekActionStatus {
+  status: "draft" | "submitted" | "approved" | "processed";
+  returnedReason: string | null;
+}
+
+// Two things need a contributor's attention: a week that was sent back
+// (counts right away, whether or not its Friday has passed — it's already
+// actionable), and a week that quietly ended with nothing ever submitted
+// (a plain draft, or no timesheet row at all) — only once its Friday has
+// actually passed, since it's still fine to be filling in a week in
+// progress. Only weeks in `recentWeeks` are considered (the same
+// last-4-clamped-to-hire-week list New Timesheet shows), so this can never
+// flag a week before the person's own history starts.
+export function contributorActionNeededCount(
+  recentWeeks: string[],
+  todayISO: string,
+  byWeek: Map<string, WeekActionStatus>,
+): number {
+  let count = 0;
+  for (const we of recentWeeks) {
+    const ts = byWeek.get(we) ?? null;
+    if (ts && ts.status === "draft" && ts.returnedReason) {
+      count++;
+    } else if (todayISO > we && (!ts || (ts.status === "draft" && !ts.returnedReason))) {
+      count++;
+    }
+  }
+  return count;
+}
+
+// ---------------------------------------------------------------------------
 // hard blocks — re-checked in every server action, not just the UI
 // ---------------------------------------------------------------------------
 
