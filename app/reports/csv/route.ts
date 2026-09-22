@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { csvResponse } from "@/lib/csv";
+import { csvNumber, csvResponse } from "@/lib/csv";
 import { fromUTCDate } from "@/lib/dateutil";
 import { ensureFreshDemoData } from "@/lib/demo";
 import type { RateRow } from "@/lib/domain";
-import { formatHours } from "@/lib/format";
 import { getRecentPayRuns } from "@/lib/paycalendar";
 import { getRatesForUser, getReportableForEntity } from "@/lib/repo";
 import { buildReportRows, type ReportStatusFilter } from "@/lib/reports";
@@ -75,11 +74,11 @@ export async function GET(request: Request) {
       r.userName,
       r.streamName,
       r.customerName ?? "",
-      formatHours(r.hours),
-      r.rateHeld,
+      csvNumber(r.hours),
+      csvNumber(r.rateHeld),
       r.contractRef ?? "",
-      r.pay,
-      ...(recomputeOn ? [r.todaysRate ?? 0, r.recomputedPay ?? 0, r.difference ?? 0] : []),
+      csvNumber(r.pay),
+      ...(recomputeOn ? [csvNumber(r.todaysRate ?? 0), csvNumber(r.recomputedPay ?? 0), csvNumber(r.difference ?? 0)] : []),
       r.expenseAccount ?? "",
       r.accountOverridden ? "yes" : "",
       r.accountOverrideReason ?? "",

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { csvResponse } from "@/lib/csv";
+import { csvNumber, csvResponse } from "@/lib/csv";
 import { ensureFreshDemoData } from "@/lib/demo";
-import { formatHours } from "@/lib/format";
+import { roundMoney } from "@/lib/format";
 import { getApprovedForManager } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/session";
 
@@ -18,12 +18,14 @@ export async function GET(request: Request) {
   ];
   for (const t of approved) {
     const hours = t.submitted?.totalHours ?? 0;
-    const pay = t.approved ? t.approved.hourly * hours : "";
+    // roundMoney, like every other amount in this app — never a raw
+    // float multiply landing in a file someone will total up.
+    const pay = t.approved ? csvNumber(roundMoney(t.approved.hourly * hours)) : "";
     rows.push([
       t.userName,
       t.weekEnding,
-      formatHours(hours),
-      t.approved?.hourly ?? "",
+      csvNumber(hours),
+      t.approved ? csvNumber(t.approved.hourly) : "",
       pay,
       t.latestEventAt,
       t.approved?.batch ?? "",

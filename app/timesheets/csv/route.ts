@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { csvResponse } from "@/lib/csv";
+import { csvNumber, csvResponse } from "@/lib/csv";
 import { ensureFreshDemoData } from "@/lib/demo";
-import { formatHours } from "@/lib/format";
+import { roundMoney } from "@/lib/format";
 import { listTimesheetsForUser } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/session";
 
@@ -16,14 +16,14 @@ export async function GET(request: Request) {
   const rows: unknown[][] = [["Week ending", "Stream", "Customer", "Hours", "Status", "Rate held", "Pay", "Pay run", "Late"]];
   for (const t of sheets) {
     const hours = t.submitted?.totalHours ?? 0;
-    const pay = t.approved ? t.approved.hourly * hours : "";
+    const pay = t.approved ? csvNumber(roundMoney(t.approved.hourly * hours)) : "";
     rows.push([
       t.weekEnding,
       t.streamName,
       t.customerName ?? "",
-      formatHours(hours),
+      csvNumber(hours),
       t.status,
-      t.approved ? t.approved.hourly : "",
+      t.approved ? csvNumber(t.approved.hourly) : "",
       pay,
       t.processed?.payRun.payday ?? "",
       t.submitted?.late ? "yes" : "",

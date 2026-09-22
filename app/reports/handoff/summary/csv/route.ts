@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { csvResponse } from "@/lib/csv";
 import { ensureFreshDemoData } from "@/lib/demo";
-import { buildHandoff, handoffDetailCsvRows, handoffFilename } from "@/lib/handoff";
+import { buildHandoff, handoffSummaryCsvRows, handoffFilename } from "@/lib/handoff";
 import { getReportableForEntity } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/session";
 
-// (a) The handoff FILE: the detail table and nothing else, so a payroll
-// system can load it without anyone deleting a title line first. The
-// summary is its own download at /reports/handoff/summary/csv, and the
-// title and description live on the screen where a person reads them.
+// (a) The summary by expense account, as its own single-table file:
+// header on row 1, one line per account, the total as the last row.
+// Separate from the detail at /reports/handoff/csv for the same reason
+// — one table per file is what an importer can actually read.
 //
 // Admin-only and entity-scoped, enforced here rather than anywhere
 // else: a route handler is a callable endpoint whether or not a link to
@@ -31,5 +31,5 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/reports", request.url));
   }
 
-  return csvResponse(handoffDetailCsvRows(handoff), handoffFilename(handoff, "detail"));
+  return csvResponse(handoffSummaryCsvRows(handoff), handoffFilename(handoff, "summary"));
 }

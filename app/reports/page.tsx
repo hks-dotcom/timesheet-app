@@ -316,9 +316,14 @@ export default async function ReportsPage({
           <>
             <div className="card-b row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
               <b>{handoffFile.title}</b>
-              <a className="btn sm" href={`/reports/handoff/csv?payday=${handoffFile.payday}`}>
-                Download CSV
-              </a>
+              <span className="row" style={{ gap: 8 }}>
+                <a className="btn sm" href={`/reports/handoff/csv?payday=${handoffFile.payday}`}>
+                  Handoff file (CSV)
+                </a>
+                <a className="btn sm" href={`/reports/handoff/summary/csv?payday=${handoffFile.payday}`}>
+                  Summary by account (CSV)
+                </a>
+              </span>
             </div>
 
             {!handoffFile.balanced && (

@@ -14,6 +14,7 @@
 // and the figures payroll later receives cannot drift apart.
 
 import { accountName } from "./accounts";
+import { csvNumber, slug } from "./csv";
 import { roundMoney } from "./format";
 import type { TimesheetSummary } from "./repo";
 
@@ -140,30 +141,50 @@ export function buildHandoff(timesheets: TimesheetSummary[], entityName: string,
   };
 }
 
-/** The CSV: detail rows, a blank line, then the summary block. */
-export function handoffCsvRows(h: Handoff): unknown[][] {
-  const out: unknown[][] = [];
-  out.push([h.title]);
-  out.push([h.note]);
-  out.push([]);
-  out.push([
-    "Person", "Week ending", "Stream", "Customer", "Hours", "Rate held", "Rate contract",
-    "Gross amount", "Expense account", "Expense account name", "Account override", "Account override reason",
-  ]);
+// (a) Two files, not one. A payroll importer wants a single table with
+// its header on row 1 and nothing else in the file — a title line, a
+// description, a blank row or a second table all have to be deleted by
+// hand before it will load. So the detail is the handoff FILE, the
+// summary is its own download, and the title and description live on
+// the screen where a person reads them.
+
+/** Detail only: header on row 1, one row per person-week, nothing else. */
+export function handoffDetailCsvRows(h: Handoff): unknown[][] {
+  const out: unknown[][] = [
+    [
+      "Person", "Week ending", "Stream", "Customer", "Hours", "Rate held", "Rate contract",
+      "Gross amount", "Expense account", "Expense account name", "Account override", "Account override reason",
+    ],
+  ];
   for (const d of h.detail) {
     out.push([
-      d.userName, d.weekEnding, d.streamName, d.customerName ?? "", d.hours, d.rateHeld, d.rateContractRef ?? "",
-      d.gross, d.expenseAccount, d.expenseAccountName, d.accountOverridden ? "yes" : "", d.accountOverrideReason ?? "",
+      d.userName,
+      d.weekEnding,
+      d.streamName,
+      d.customerName ?? "",
+      csvNumber(d.hours),
+      csvNumber(d.rateHeld),
+      d.rateContractRef ?? "",
+      csvNumber(d.gross),
+      d.expenseAccount,
+      d.expenseAccountName,
+      d.accountOverridden ? "yes" : "",
+      d.accountOverrideReason ?? "",
     ]);
   }
-  out.push([]);
-  out.push(["Summary by expense account"]);
-  out.push(["Expense account", "Expense account name", "People", "Weeks", "Gross amount"]);
-  for (const l of h.summary) out.push([l.account, l.accountName, l.people, l.weeks, l.gross]);
-  out.push(["Total", "", "", h.detail.length, h.total]);
-  if (!h.balanced) {
-    out.push([]);
-    out.push([`WARNING: the summary total ${h.total} does not equal the sum of this pay run's processed amounts ${h.processedTotal}.`]);
-  }
   return out;
+}
+
+/** Summary only: header on row 1, one line per account, total last. */
+export function handoffSummaryCsvRows(h: Handoff): unknown[][] {
+  const out: unknown[][] = [["Expense account", "Expense account name", "People", "Weeks", "Gross amount"]];
+  for (const l of h.summary) out.push([l.account, l.accountName, l.people, l.weeks, csvNumber(l.gross)]);
+  out.push(["Total", "", "", h.detail.length, csvNumber(h.total)]);
+  return out;
+}
+
+/** payroll-handoff-corethread-2026-08-31.csv */
+export function handoffFilename(h: Handoff, part: "detail" | "summary"): string {
+  const stem = `payroll-handoff-${slug(h.entityName)}-${h.payday}`;
+  return part === "detail" ? `${stem}.csv` : `${stem}-summary.csv`;
 }
