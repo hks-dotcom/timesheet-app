@@ -19,7 +19,7 @@ export interface ReadyRow {
   amount: number;
   payRunLabel: string;
   defaultAccount: string;
-  overrideApprovedById: number | null; // D7: only set when approved.override is true
+  overrideApprovedById: number | null; // only set when approved.override is true
 }
 
 export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }) {
@@ -70,7 +70,7 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
   const ACCOUNT_REASON_MIN = 5;
 
   const batchRows = batchIds ? rows.filter((r) => batchIds.includes(r.id)) : [];
-  // (c) The same summariser the payroll handoff uses, so what an admin
+  // The same summariser the payroll handoff uses, so what an admin
   // agrees to here and what payroll later receives cannot disagree.
   const costByAccount = summariseByAccount(
     batchRows.map((r) => ({
@@ -81,7 +81,7 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
     })),
   );
   const grandTotal = costByAccount.total;
-  // D7: the PREVENTIVE half of the segregation-of-duties check — Reports'
+  // The PREVENTIVE half of the segregation-of-duties check — Reports'
   // banner (lib/repo.ts's getSodFlags) is the DETECTIVE half, after the
   // fact. Same condition, checked before it can happen instead of after.
   const selfOverrideRows = batchRows.filter((r) => r.overrideApprovedById === meId);
@@ -137,7 +137,7 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
                     <input type="checkbox" checked={selected.has(r.id)} onChange={(e) => toggle(r.id, e.target.checked)} />
                   </td>
                   <td>
-                    {/* (c) This table's rows carry a checkbox, an account
+                    {/* This table's rows carry a checkbox, an account
                         dropdown and a reason input, so the row itself is
                         NOT a link — a stray click while picking an
                         account must never navigate away mid-batch.

@@ -72,7 +72,7 @@ alter table rates drop constraint if exists rates_user_id_effective_from_key;
 alter table rates add column if not exists recorded_at timestamptz not null default now();
 create index if not exists rates_user_id_recorded_at_idx on rates (user_id, recorded_at);
 
--- Contract reference behind every rate (D8) — added nullable, backfilled
+-- Contract reference behind every rate — added nullable, backfilled
 -- for any pre-existing rows (a real reseed replaces these anyway), then
 -- made required, so this migration stays safe to rerun against a
 -- database that already has rate rows from before this rule existed.
@@ -274,7 +274,7 @@ create trigger admin_log_no_delete
   before delete on admin_log
   for each row execute function no_update_no_delete();
 
--- Contract end dates (D9). The end date in force for a user is the
+-- Contract end dates. The end date in force for a user is the
 -- latest recorded row for them — never edited or deleted, only
 -- superseded (kind documents why: an initial 'set', an 'extend', or an
 -- admin 'shorten' — a manager may only ever record 'extend').
@@ -301,7 +301,7 @@ create trigger contract_terms_no_delete
   before delete on contract_terms
   for each row execute function no_update_no_delete();
 
--- Caps traced to contracts (item b). Weekly and daily caps used to be
+-- Caps traced to contracts. Weekly and daily caps used to be
 -- in-place columns on users, with nothing saying which contract set
 -- them. They are effective-by-recording the same way contract_terms is:
 -- the caps IN FORCE for a person are the latest recorded row, never

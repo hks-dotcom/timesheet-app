@@ -23,10 +23,10 @@ const ENDING_SOON_DAYS = 21;
 // approved weeks with a Mark processed button.
 //
 // Two tiles are added beyond the mock — staff with overdue weeks, and
-// contracts ending within 21 days — because this prompt's item (e)
-// names them and item (f) seeds data specifically so the contracts tile
-// has something to show. Everything is derived per request from the
-// latest event, entity-scoped, and never stored.
+// contracts ending within 21 days. Both are things a payroll admin has
+// to chase before a run closes, and neither is visible anywhere else on
+// this screen. Everything is derived per request from the latest event,
+// entity-scoped, and never stored.
 export async function AdminDashboard({ me }: { me: SessionUser }) {
   const todayISO = fromUTCDate(new Date());
   const [users, submitted, ready, weeksOnFile, tracker] = await Promise.all([

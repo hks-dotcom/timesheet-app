@@ -5,7 +5,7 @@ import { buildHandoff, handoffSummaryCsvRows, handoffFilename } from "@/lib/hand
 import { getReportableForEntity } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/session";
 
-// (a) The summary by expense account, as its own single-table file:
+// The summary by expense account, as its own single-table file:
 // header on row 1, one line per account, the total as the last row.
 // Separate from the detail at /reports/handoff/csv for the same reason
 // — one table per file is what an importer can actually read.

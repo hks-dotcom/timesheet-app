@@ -141,7 +141,7 @@ export function buildHandoff(timesheets: TimesheetSummary[], entityName: string,
   };
 }
 
-// (a) Two files, not one. A payroll importer wants a single table with
+// Two files, not one. A payroll importer wants a single table with
 // its header on row 1 and nothing else in the file — a title line, a
 // description, a blank row or a second table all have to be deleted by
 // hand before it will load. So the detail is the handoff FILE, the

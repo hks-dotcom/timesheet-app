@@ -190,7 +190,7 @@ async function runVerifications(client: PoolClient) {
       `,
     },
     {
-      // (b) Caps in force must always be traceable to a contract.
+      // Caps in force must always be traceable to a contract.
       name: "active hourly users with no cap_terms row",
       sql: `
         select count(*) from users u

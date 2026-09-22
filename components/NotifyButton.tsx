@@ -4,7 +4,8 @@ import { useActionState, useState } from "react";
 import { chaseAction, type NotifyState } from "@/app/actions/notify";
 
 // Confirm-then-send, matching the return/override modals elsewhere — a
-// single in-app notification, nothing else. No email framing (D1).
+// single in-app notification, nothing else — no email is sent, and the
+// copy never implies one is.
 export function NotifyButton({
   targetId,
   targetName,

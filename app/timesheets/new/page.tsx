@@ -36,11 +36,11 @@ export default async function NewTimesheetPage({
   const myTimesheets = await listTimesheetsForUser(me.id);
   const byWeek = new Map(myTimesheets.map((t) => [t.weekEnding, t]));
   const earliestWeek = myTimesheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
-  // D9: a week whose Monday falls after the contract end date in force is
+  // A week whose Monday falls after the contract end date in force is
   // never offered here — not shown, not selectable, not defaulted to.
   // offerableWeeks is the one function that applies that rule; the nav
   // badge and the Tracker use the very same one.
-  // (b) The caps the form shows and pre-validates against are the ones
+  // The caps the form shows and pre-validates against are the ones
   // in force in cap_terms, read through the shared latestCapTerm — the
   // same values submitCore will snapshot, so the form can never advertise
   // a ceiling the server does not apply.

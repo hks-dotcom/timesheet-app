@@ -116,7 +116,7 @@ export interface UserRow {
   payType: "hourly" | "salaried";
   function: string;
   managerId: number | null;
-  // Caps are NOT here any more — they live in cap_terms (item b), so a
+  // Caps are NOT here any more — they live in cap_terms, so a
   // cap can never be in force without the contract that agreed it.
   active: boolean;
 }
@@ -305,7 +305,7 @@ interface RosterUser {
   terminationWeeksAgo?: number;
   streamKey?: string;
   rateSchedule?: { weeksAgo: number; hourly: number; contractRef: string }[];
-  // Contract end date (D9) — every hourly person gets one. Two deliberate
+  // Contract end date — every hourly person gets one. Two deliberate
   // scenarios: Nikhil's already ended (matches his termination), Bob's
   // (the newest hire) ends within the next 3 weeks. Everyone else is
   // comfortably active.
@@ -590,7 +590,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     }
   }
 
-  // Contract end dates (D9) — one 'set' row per hourly person, recorded by
+  // Contract end dates — one 'set' row per hourly person, recorded by
   // their entity's payroll admin at hire time.
   const nextContractTermId = makeIdGen();
   const contractTerms: ContractTermRow[] = [];
@@ -608,7 +608,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     });
   }
 
-  // Caps traced to contracts (item b) — one initial cap_terms row per
+  // Caps traced to contracts — one initial cap_terms row per
   // hourly person, recorded by their entity's payroll admin at hire
   // time, citing the same contract their earliest rate row cites so the
   // paperwork is consistent. Anchor-relative like everything else.
@@ -628,7 +628,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     });
   }
 
-  // Delegates the actual lookup to lib/domain.ts's real rateAsOf (D2's
+  // Delegates the actual lookup to lib/domain.ts's real rateAsOf (the
   // "one shared function") instead of re-sorting/re-filtering here —
   // recordedAt ties never arise in the seed's own rate schedule, so
   // effectiveFrom stands in for it.
@@ -669,7 +669,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
   // until payroll confirms it. Computed once, up front, so it's the same
   // pay run for every person regardless of where they fall in the roster.
   const mostRecentPastPayRun = getMostRecentPastPayRun(todayISO);
-  // (c) The week each of the OVERDUE_STAFF is left sitting on, derived
+  // The week each of the OVERDUE_STAFF is left sitting on, derived
   // from this run's anchor and today, so it moves with them.
   const overdueWeekByUser = new Map(OVERDUE_STAFF.map((k) => [k, overdueWeeksAgoFor(k, anchor, todayISO)]));
 
@@ -805,7 +805,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         bucket = chance(rng, 0.5) ? "draft" : "submitted";
       }
 
-      // (c) …except for the one week per entity deliberately left
+      // …except for the one week per entity deliberately left
       // overdue. Forced last so it wins over whatever the rules above
       // chose, and only when this week is not already carrying one of
       // the other scenarios.
@@ -852,7 +852,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         hours,
         totalHours: roundedTotal,
         // The caps in force at submission, with the contract that
-        // agreed them — the same shape submitCore writes (item b).
+        // agreed them — the same shape submitCore writes.
         weeklyCap: u.weeklyCap,
         dailyCap: u.dailyCap,
         capsContractRef: capTerms.find((c) => c.userId === userId)!.contractRef,

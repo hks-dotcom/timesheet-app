@@ -1,8 +1,7 @@
 // Pure business rules shared by every screen and every server action. No DB
 // access here — callers fetch rows (rates, holidays, time off) and pass
 // them in. Ports the rules from docs/mock.html into real, testable
-// functions; where the two disagree the written rules win (see CLAUDE.md
-// and the prompt this was built from).
+// functions; where the two disagree the written rules in CLAUDE.md win.
 
 import { addDays } from "./dateutil";
 import { getPayRunForLateSubmission, getPayRunForWeekEnding, type PayRun } from "./paycalendar";
@@ -114,7 +113,7 @@ export function recentWeekEndings(anchorFriday: string, earliestWeekEnding: stri
 }
 
 // ---------------------------------------------------------------------------
-// contract end dates (D9) — a minimal local shape, not TimesheetSummary/
+// contract end dates — a minimal local shape, not TimesheetSummary/
 // repo's row types, so this module stays DB-free.
 // ---------------------------------------------------------------------------
 
@@ -137,7 +136,7 @@ export function latestContractTerm(rows: ContractTermRow[]): ContractTermRow | n
 }
 
 // ---------------------------------------------------------------------------
-// caps in force (item b)
+// caps in force
 // ---------------------------------------------------------------------------
 
 export interface CapTermRow {
@@ -169,7 +168,7 @@ export function weekAllowedByEndDate(weekMonday: string, endDate: string | null)
 
 // The weeks this person may still file: the recent-week window clamped to
 // their own history, then with every week past the contract end date in
-// force dropped (D9). New Timesheet's list, the contributor nav badge and
+// force dropped. New Timesheet's list, the contributor nav badge and
 // the Tracker's "open weeks" are all the same set by definition, so they
 // all call this one function rather than repeating the filter.
 export function offerableWeeks(

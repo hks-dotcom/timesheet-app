@@ -18,7 +18,7 @@ const DAY_LABEL: Record<(typeof DAY_KEYS)[number], string> = {
   fri: "Friday",
 };
 
-// (c) One timesheet, read-only. docs/mock.html has no single-timesheet
+// One timesheet, read-only. docs/mock.html has no single-timesheet
 // view — its rows only swap the side panel between Activity and Trail —
 // so this is built from the pieces the app already has: the same
 // StatusMark, the same ActivityTrail (in trail mode, via the shell's

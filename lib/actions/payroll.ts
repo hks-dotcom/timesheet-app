@@ -104,7 +104,7 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
       if (status !== "approved") {
         throw new Error(`One of the selected timesheets is now ${status}, not approved. Refresh and try again.`);
       }
-      // An approval override has needed a comment since D6; an account
+      // An approval override has always needed a comment; an account
       // override is the same kind of decision — a person overruling the
       // rule — so it needs the same. Checked here, before the first
       // insert, and thrown so the whole batch rolls back: a batch is

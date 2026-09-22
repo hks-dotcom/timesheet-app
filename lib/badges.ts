@@ -38,7 +38,7 @@ export async function navBadgesFor(me: SessionUser): Promise<Partial<Record<Badg
   const earliestWeek = sheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
   const terms = await getContractTermsForUser(me.id);
   const endDate = latestContractTerm(terms)?.endDate ?? null;
-  // D9: a week past the contract end date is never something to act on —
+  // A week past the contract end date is never something to act on —
   // the same offerableWeeks New Timesheet and the Tracker use.
   const recentWeeks = offerableWeeks(anchor, earliestWeek, endDate);
   const byWeek = new Map<string, WeekActionStatus>(

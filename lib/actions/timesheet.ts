@@ -123,7 +123,7 @@ async function upsertDraft(client: PoolClient, input: DraftInput): Promise<{ id:
 }
 
 // Fetches this user's full rate history and delegates to lib/domain.ts's
-// rateAsOf (D2's "one shared function") — never a second, simpler SQL
+// rateAsOf, the one shared rate lookup — never a second, simpler SQL
 // re-implementation of "the rate as of a date" that skips the
 // recorded_at tie-break a same-dated correction relies on.
 async function rateAsOfUser(client: PoolClient, userId: number, dateISO: string) {
@@ -237,7 +237,7 @@ export async function submitCore(me: SessionUser, formData: FormData): Promise<F
     return { error: "This week is past its cutoff — say why it is late (at least 5 characters)." };
   }
 
-  // D9: the end date in force gates submission independently of the
+  // The end date in force gates submission independently of the
   // window above — a week can be "open" by the pay calendar and still be
   // past someone's contract.
   const weekDates = weekdayDates(weekEnding);
@@ -258,7 +258,7 @@ export async function submitCore(me: SessionUser, formData: FormData): Promise<F
   const [holidays, timeOff] = await Promise.all([getHolidaysByDate(dates), getTimeOffByDate(me.id, dates)]);
   const blocked = blockedDaysFromRows(weekEnding, holidays, timeOff);
 
-  // (b) Caps come from cap_terms, read through the one shared
+  // Caps come from cap_terms, read through the one shared
   // latestCapTerm, and are checked here rather than taken on trust from
   // the session object — a cap change between page load and submit has
   // to bite immediately. Someone with no cap_terms row at all cannot
@@ -496,7 +496,7 @@ export async function approveBatchCore(me: SessionUser, formData: FormData): Pro
   return { ok: true, batch: committedBatch };
 }
 
-// D6: payroll admin approving a week directly, bypassing the assigned
+// A payroll admin approving a week directly, bypassing the assigned
 // manager. Writes the SAME approved-event shape a normal approval does
 // (hourly/rateEffectiveFrom/contractRef via the one shared rateAsOf path)
 // plus override: true, a distinct "OV-" batch prefix, and a required

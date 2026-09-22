@@ -37,7 +37,7 @@ const VALID_FUNCTIONS = new Set(Object.keys(FUNCTION_ACCOUNT));
 // ONE admin_log line listing everything that changed; no notification
 // (matching the mock).
 //
-// F3: entity is stored on each timesheet row, so moving someone between
+// Entity is stored on each timesheet row, so moving someone between
 // entities would leave their filed weeks pointing at the old entity while
 // they point at the new one — and there is no cross-entity manager in this
 // app to approve or process the orphaned side. Transfers are out of scope,
@@ -97,7 +97,7 @@ export async function saveUserCore(me: SessionUser, formData: FormData): Promise
     if (!row) throw new Error("That user no longer exists.");
     if (Number(row.entity_id) !== me.entityId) throw new Error("That user is not in your entity.");
 
-    // F3: reject before any write, so a rejected save leaves zero rows in
+    // Reject before any write, so a rejected save leaves zero rows in
     // users and zero in admin_log.
     if (entityId !== Number(row.entity_id) && Number(row.timesheet_count) > 0) {
       throw new Error(
@@ -116,7 +116,7 @@ export async function saveUserCore(me: SessionUser, formData: FormData): Promise
       }
     }
 
-    // (b) A cap change is an append to cap_terms citing the contract
+    // A cap change is an append to cap_terms citing the contract
     // that agreed it — never an in-place edit, and never without the
     // paperwork. Checked before any write, so a rejected save leaves
     // cap_terms, users and admin_log all untouched.
@@ -172,7 +172,7 @@ export async function saveUserCore(me: SessionUser, formData: FormData): Promise
 }
 
 // ---------------------------------------------------------------------------
-// addRate — a new rate row (D2/D8). Sharing effective_from with an
+// addRate — a new rate row. Sharing effective_from with an
 // existing row for that user is a CORRECTION (superseding it via
 // recorded_at, never editing or deleting it) rather than a plain add —
 // the admin_log text and the notification wording both say so.
@@ -245,7 +245,7 @@ export async function addRateCore(me: SessionUser, formData: FormData): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// recordEndDate — D9/D10. Shared by the admin's Edit modal (set, extend or
+// recordEndDate — shared by the admin's Edit modal (set, extend or
 // shorten anyone in their entity) and the manager's "My team" Extend modal
 // (extend-only, own direct reports only). Role branching lives here, once,
 // so both surfaces enforce exactly the same rule.

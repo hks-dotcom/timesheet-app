@@ -21,7 +21,7 @@ export function GateForm({ entities }: { entities: EntityRow[] }) {
 
   return (
     <form action={formAction}>
-      {/* (e) Three guided entries, one click each. Each submits the
+      {/* Three guided entries, one click each. Each submits the
           same gate action with a guide id; the role, the person and the
           landing screen are all resolved server-side from the data. */}
       <div className="guides">

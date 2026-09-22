@@ -56,7 +56,7 @@ export default async function ReportsPage({
     recomputeOn && ratesByUser ? { todayISO, ratesByUser } : undefined,
   );
 
-  // (c) The payroll handoff for one processed pay run. The chooser only
+  // The payroll handoff for one processed pay run. The chooser only
   // offers pay runs this entity has actually processed something into,
   // derived from the processed events rather than from the calendar, so
   // it can never offer an empty file. The handoff itself is built from
@@ -282,7 +282,7 @@ export default async function ReportsPage({
         )}
       </div>
 
-      {/* (c) Payroll handoff — what payroll receives for one processed
+      {/* Payroll handoff — what payroll receives for one processed
           pay run, already coded to the ledger. Deliberately not a
           journal: gross pay and its coding only. */}
       <div className="card">

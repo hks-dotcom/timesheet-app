@@ -1,7 +1,7 @@
 // Pay calendar, derived entirely by rule. Pure functions, no DB, no
 // scheduled jobs — every pay run is computed on demand from a date.
 //
-// Rules (see CLAUDE.md / repo prompt for the authoritative spec):
+// Rules (CLAUDE.md holds the authoritative spec):
 //  - Scheduled paydays are the 15th and the last day of each month.
 //  - If a scheduled payday falls on a weekend or a federal holiday, payday
 //    moves BACK to the nearest preceding business day.

@@ -26,7 +26,7 @@ export async function enterAppAction(_prev: EnterAppState, formData: FormData): 
   const entityId = Number(formData.get("entityId"));
   if (!Number.isFinite(entityId)) return { error: "Choose a role and an entity." };
 
-  // A guided entry (item e). The id comes from the client, so it is
+  // A guided entry. The id comes from the client, so it is
   // checked against the allowlist in lib/guides.ts and nothing else;
   // anything unrecognised is refused outright rather than treated as a
   // destination. The landing URL is built server-side from the data as

@@ -5,7 +5,7 @@ import { buildHandoff, handoffDetailCsvRows, handoffFilename } from "@/lib/hando
 import { getReportableForEntity } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/session";
 
-// (a) The handoff FILE: the detail table and nothing else, so a payroll
+// The handoff FILE: the detail table and nothing else, so a payroll
 // system can load it without anyone deleting a title line first. The
 // summary is its own download at /reports/handoff/summary/csv, and the
 // title and description live on the screen where a person reads them.

@@ -5,11 +5,11 @@ import { recordEndDateAction, type AdminState } from "@/app/actions/admin";
 import { formatDateLong } from "@/lib/format";
 import type { TeamMemberRow } from "@/lib/repo";
 
-// D10 (manager side): a manager may only EXTEND a direct report's
-// contract end date, never set or shorten it — that stays with payroll
-// admin's Edit modal (components/UsersAdmin.tsx). Not in the original
-// mock; added because the mock has no manager-facing contract screen at
-// all and D10 asks for one.
+// The manager's side of contract end dates: a manager may only EXTEND a
+// direct report's end date, never set or shorten it — those stay with
+// payroll admin's Edit modal (components/UsersAdmin.tsx). Not in the
+// original mock, which has no manager-facing contract screen at all,
+// but a manager is the person who knows an engagement is continuing.
 export function MyTeamCard({ team }: { team: TeamMemberRow[] }) {
   const [extendId, setExtendId] = useState<number | null>(null);
   const extendUser = team.find((u) => u.id === extendId) ?? null;

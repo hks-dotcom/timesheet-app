@@ -142,7 +142,7 @@ for (const c of badgeCases) {
   });
 }
 
-// latestContractTerm / weekAllowedByEndDate (D9)
+// latestContractTerm / weekAllowedByEndDate
 test("latestContractTerm: no rows -> null", () => {
   assert.equal(latestContractTerm([]), null);
 });

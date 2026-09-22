@@ -20,7 +20,7 @@ export interface OverrideSheet {
   rate: number;
 }
 
-// D6: payroll admin's own approval queue — every submitted timesheet in
+// The payroll admin's own approval queue — every submitted timesheet in
 // the entity, all of which belong to a manager. One at a time, via a
 // confirm modal that requires a comment, matching the mock's "Override
 // approve?" flow rather than the manager queue's batch pattern.
@@ -46,7 +46,7 @@ export function OverrideQueue({ sheets }: { sheets: OverrideSheet[] }) {
         <div className="card-b" style={{ borderBottom: "1px solid var(--border)" }} key={s.id}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
             <span>
-              {/* (c) Card with Notify and Override controls, so the
+              {/* Card with Notify and Override controls, so the
                   name is the link rather than the whole card. */}
               <Link className="rowlink" href={`/timesheet/${s.id}`}>
                 <b>{s.userName}</b>

@@ -953,7 +953,7 @@ textarea {
   text-decoration: underline;
 }
 
-/* (e) Guided entries on the gate. Built from the mock's own tokens —
+/* Guided entries on the gate. Built from the mock's own tokens —
    surface, border, ink, sunk, radius — so they sit with the rest of
    the card rather than introducing a second visual language. Stacked
    at any width, which is also what they want on a phone. */

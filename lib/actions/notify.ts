@@ -22,7 +22,7 @@ import { revalidateAfterCommit } from "../revalidate";
 
 export type NotifyState = { error: string } | { ok: true } | null;
 
-// D1: no email framing anywhere in this copy — the confirm and the
+// No email framing anywhere in this copy — the confirm and the
 // notification text both say only what actually happens in-app.
 export async function chaseCore(me: SessionUser, formData: FormData): Promise<NotifyState> {
   const denied = assertRole(me, ["admin"]);

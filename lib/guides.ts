@@ -98,7 +98,7 @@ export async function resolveGuideTarget(guide: GuideId, entityId: number, now: 
     // and an approved week under that earliest rate. Exactly the shape
     // db/seed.ts guarantees.
     const cutoff = new Date(Date.parse(anchor) - EIGHTEEN_MONTHS_WEEKS * 7 * 86_400_000).toISOString().slice(0, 10);
-    // (b) Not just the person — the WEEK. The guide says "open a week
+    // Not just the person — the WEEK. The guide says "open a week
     // from about eighteen months ago", so it resolves that one week
     // and lands on it, rather than dropping the visitor into two years
     // of rows and leaving them to find it. The newest processed week

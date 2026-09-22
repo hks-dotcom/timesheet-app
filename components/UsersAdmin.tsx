@@ -130,7 +130,7 @@ function EditUserModal({
   // would wrongly tag every row before the newest one as superseded even
   // when it was just an ordinary later raise, not a same-dated correction.
   const currentRate = rateAsOf(rateHistory, todayISO);
-  // F3: entity is stored on each timesheet, and there is no cross-entity
+  // Entity is stored on each timesheet, and there is no cross-entity
   // manager to approve or process the weeks a move would strand — so once
   // anyone has a single filed week their entity is fixed. The server
   // action rejects the change too; this only saves the round trip.
@@ -139,7 +139,7 @@ function EditUserModal({
   const [fn, setFn] = useState(user.function);
   const [weeklyCap, setWeeklyCap] = useState(user.weeklyCap);
   const [dailyCap, setDailyCap] = useState(user.dailyCap);
-  // (b) Caps are contract terms now, so changing them needs the
+  // Caps are contract terms now, so changing them needs the
   // paperwork. Only asked for once a value actually differs; the server
   // rejects the change without it either way.
   const [capsContractRef, setCapsContractRef] = useState("");

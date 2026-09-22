@@ -55,7 +55,7 @@ export interface SessionUser {
   managerId: number | null;
   managerName: string | null;
   // The caps IN FORCE, read from cap_terms — never from users, which no
-  // longer holds them (item b). capsContractRef is the contract that
+  // longer holds them. capsContractRef is the contract that
   // agreed them, so a cap can never travel without its paperwork.
   weeklyCap: number;
   dailyCap: number;
@@ -155,7 +155,7 @@ export interface TeamMemberRow {
   endDateContractRef: string | null;
 }
 
-// D10 (manager side): a manager's own direct reports, with the contract
+// A manager's own direct reports, with the contract
 // end date in force for each — everyone reporting to a manager is hourly
 // by construction (only interns/consultants have managers), so this
 // never needs a pay-type branch the way getUsersForEntity does.
@@ -190,7 +190,7 @@ export interface AdminUserRow {
   currentRate: number | null; // hourly only
   endDate: string | null; // hourly only — the end date in force
   endDateContractRef: string | null;
-  timesheetCount: number; // F3: entity is fixed once any week exists for this person
+  timesheetCount: number; // entity is fixed once any week exists for this person
 }
 
 // The Users screen's list — every person in the admin's own entity,
@@ -462,7 +462,7 @@ export interface SubmittedPayload {
   totalHours: number;
   weeklyCap: number;
   dailyCap: number;
-  capsContractRef?: string; // the contract those caps trace to (item b)
+  capsContractRef?: string; // the contract those caps trace to
   late?: boolean;
   reason?: string;
   resubmission?: boolean;
@@ -474,7 +474,7 @@ export interface ApprovedPayload {
   contractRef: string;
   override?: boolean;
   batch?: string;
-  comment?: string; // required when override is true (D6)
+  comment?: string; // required when override is true
 }
 
 export interface ResolverInputs {
@@ -638,7 +638,7 @@ export async function getReadyForProcessing(entityId: number): Promise<Timesheet
   return result.rows.map(mapTimesheetRow);
 }
 
-// D6: every submitted timesheet in this entity — payroll admin's override
+// Every submitted timesheet in this entity — the payroll admin's override
 // queue. These all belong to a manager; payroll admin isn't in anyone's
 // approval chain, so there is no "own reports" scoping here.
 export async function getSubmittedForEntity(entityId: number): Promise<TimesheetSummary[]> {
@@ -888,7 +888,7 @@ export interface TrackerStaffRow {
   function: string;
   managerName: string | null;
   lastSubmittedWeek: string | null;
-  openWeeks: number; // within the usual last-4-week window, contract-end-date aware (D9)
+  openWeeks: number; // within the usual last-4-week window, contract-end-date aware
   overdueWeeks: number; // of those, past their own cutoff
   chaseCount: number;
 }
@@ -896,7 +896,7 @@ export interface TrackerStaffRow {
 // Every active hourly person in the entity, with the same "open week"
 // definition New Timesheet and the contributor nav badge use — missing or
 // still a draft, not future, and never a week past the contract end date
-// in force (D9) — so Overdue here always agrees with what that person
+// in force — so Overdue here always agrees with what that person
 // would actually see if they opened New Timesheet themselves.
 export async function getTrackerStaffForEntity(entityId: number, todayISO: string): Promise<TrackerStaffRow[]> {
   const pool = getPool();
@@ -970,7 +970,7 @@ export async function getTrackerManagersForEntity(entityId: number, todayISO: st
   return rows;
 }
 
-// D9: the deep link a "Notify" chase sends a contributor to — the same
+// The deep link a "Notify" chase sends a contributor to — the same
 // newest-open-week rule New Timesheet's own default uses, so the link
 // always lands them exactly where their own page would have opened.
 export async function nextOpenWeekForContributor(userId: number, todayISO: string): Promise<string | null> {

@@ -112,7 +112,7 @@ export function ApprovalQueue({ sheets }: { sheets: PendingSheet[] }) {
                 style={{ marginTop: 4 }}
               />
               <span>
-                {/* (c) A card, not a table row, and it carries Approve
+                {/* A card, not a table row, and it carries Approve
                     and Return controls — so the card is not one big
                     link. The person's name opens the timesheet. */}
                 <Link className="rowlink" href={`/timesheet/${s.id}`}>
