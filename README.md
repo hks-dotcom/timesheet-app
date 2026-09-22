@@ -75,7 +75,7 @@ database (the demo runs on Neon).
 ```bash
 npm install
 cp .env.example .env.local     # then fill in the two values
-npm run db:migrate             # applies db/schema.sql; additive and safe to rerun
+npm run db:migrate             # applies db/schema.sql; safe to rerun
 npm run db:seed                # rebuilds the demo data, then verifies it
 npm run dev
 ```
