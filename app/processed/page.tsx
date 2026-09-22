@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/AppShell";
 import { MarkProcessed, type ReadyRow } from "@/components/MarkProcessed";
 import { resolveExpenseAccount } from "@/lib/accounts";
+import { roundMoney } from "@/lib/format";
 import { getPayRunForWeekEnding } from "@/lib/paycalendar";
 import { getReadyForProcessing } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
@@ -28,7 +29,7 @@ export default async function ProcessedPage({ searchParams }: { searchParams: Pr
       customerName: t.customerName,
       hours,
       rate,
-      amount: Math.round(hours * rate * 100) / 100,
+      amount: roundMoney(hours * rate),
       payRunLabel: `${payRun.payday} run`,
       defaultAccount,
       overrideApprovedById: t.approved?.override ? t.approvedById : null,

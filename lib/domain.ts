@@ -143,6 +143,22 @@ export function weekAllowedByEndDate(weekMonday: string, endDate: string | null)
   return weekMonday <= endDate;
 }
 
+// The weeks this person may still file: the recent-week window clamped to
+// their own history, then with every week past the contract end date in
+// force dropped (D9). New Timesheet's list, the contributor nav badge and
+// the Tracker's "open weeks" are all the same set by definition, so they
+// all call this one function rather than repeating the filter.
+export function offerableWeeks(
+  anchorFriday: string,
+  earliestWeekEnding: string,
+  endDate: string | null,
+  count = 4,
+): string[] {
+  return recentWeekEndings(anchorFriday, earliestWeekEnding, count).filter((we) =>
+    weekAllowedByEndDate(weekdayDates(we).mon, endDate),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // contributor "needs your attention" count — the nav badge on "New
 // timesheet". A minimal local shape, not TimesheetSummary, so this module

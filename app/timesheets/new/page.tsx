@@ -3,7 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
 import { TimesheetForm } from "@/components/TimesheetForm";
 import { fromUTCDate, mostRecentFriday } from "@/lib/dateutil";
-import { blockedDaysFromRows, latestContractTerm, recentWeekEndings, weekAllowedByEndDate, weekdayDates, windowOf, ZERO_HOURS } from "@/lib/domain";
+import { blockedDaysFromRows, latestContractTerm, offerableWeeks, weekdayDates, windowOf, ZERO_HOURS } from "@/lib/domain";
 import { formatDateLong, formatDateShort } from "@/lib/format";
 import {
   getActiveCustomersForEntity,
@@ -35,13 +35,13 @@ export default async function NewTimesheetPage({
   const myTimesheets = await listTimesheetsForUser(me.id);
   const byWeek = new Map(myTimesheets.map((t) => [t.weekEnding, t]));
   const earliestWeek = myTimesheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
-  const allWeeks = recentWeekEndings(anchor, earliestWeek); // newest first
-
   // D9: a week whose Monday falls after the contract end date in force is
   // never offered here — not shown, not selectable, not defaulted to.
+  // offerableWeeks is the one function that applies that rule; the nav
+  // badge and the Tracker use the very same one.
   const contractTerms = await getContractTermsForUser(me.id);
   const endDate = latestContractTerm(contractTerms)?.endDate ?? null;
-  const recentWeeks = allWeeks.filter((we) => weekAllowedByEndDate(weekdayDates(we).mon, endDate));
+  const recentWeeks = offerableWeeks(anchor, earliestWeek, endDate);
 
   const rows = recentWeeks.map((we) => ({ weekEnding: we, timesheet: byWeek.get(we) ?? null, window: windowOf(we, todayISO) }));
 

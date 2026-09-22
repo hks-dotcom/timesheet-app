@@ -9,8 +9,7 @@ import {
   blockedDaysFromRows,
   latestContractTerm,
   rateAsOf,
-  recentWeekEndings,
-  weekAllowedByEndDate,
+  offerableWeeks,
   weekdayDates,
   windowOf,
   type BlockedDay,
@@ -795,7 +794,7 @@ export async function getTrackerStaffForEntity(entityId: number, todayISO: strin
     const terms = await getContractTermsForUser(id);
     const endDate = latestContractTerm(terms)?.endDate ?? null;
     const byWeek = new Map(sheets.map((t) => [t.weekEnding, t]));
-    const weeks = recentWeekEndings(anchor, earliestWeek).filter((we) => weekAllowedByEndDate(weekdayDates(we).mon, endDate));
+    const weeks = offerableWeeks(anchor, earliestWeek, endDate);
 
     let openWeeks = 0;
     let overdueWeeks = 0;
@@ -853,7 +852,7 @@ export async function nextOpenWeekForContributor(userId: number, todayISO: strin
   const earliestWeek = sheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
   const terms = await getContractTermsForUser(userId);
   const endDate = latestContractTerm(terms)?.endDate ?? null;
-  const weeks = recentWeekEndings(anchor, earliestWeek).filter((we) => weekAllowedByEndDate(weekdayDates(we).mon, endDate));
+  const weeks = offerableWeeks(anchor, earliestWeek, endDate);
 
   for (const we of weeks) {
     const ts = byWeek.get(we);

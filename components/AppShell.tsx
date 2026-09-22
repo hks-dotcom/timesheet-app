@@ -1,13 +1,11 @@
 import Link from "next/link";
-import { fromUTCDate, mostRecentFriday } from "@/lib/dateutil";
-import { contributorActionNeededCount, latestContractTerm, recentWeekEndings, weekAllowedByEndDate, weekdayDates, type WeekActionStatus } from "@/lib/domain";
+import { navBadgesFor } from "@/lib/badges";
+import { fromUTCDate } from "@/lib/dateutil";
 import { getUpcomingPayRuns } from "@/lib/paycalendar";
 import {
-  getContractTermsForUser,
   getNotificationsForUser,
   getPendingForManager,
   getReadyForProcessing,
-  getSubmittedForEntity,
   listTimesheetsForUser,
   type Role,
   type SessionUser,
@@ -48,38 +46,6 @@ function navFor(role: Role): { tab: ActiveTab; href: string; label: string }[] {
     { tab: "timesheets", href: "/timesheets", label: "My timesheets" },
     { tab: "new", href: "/timesheets/new", label: "New timesheet" },
   ];
-}
-
-// The number on each nav tab itself — separate from the notification
-// bell's unread count. Entity-scoped (admin/manager queries already are;
-// the contributor count is inherently scoped to just that one person).
-// Zero is represented as "no entry", not a stored/shown 0.
-async function badgesFor(me: SessionUser): Promise<Partial<Record<ActiveTab, number>>> {
-  const todayISO = fromUTCDate(new Date());
-  if (me.role === "admin") {
-    const [ready, submitted] = await Promise.all([getReadyForProcessing(me.entityId), getSubmittedForEntity(me.entityId)]);
-    const badges: Partial<Record<ActiveTab, number>> = {};
-    if (ready.length) badges.processed = ready.length;
-    if (submitted.length) badges.overrides = submitted.length;
-    return badges;
-  }
-  if (me.role === "manager") {
-    const pending = await getPendingForManager(me.id);
-    return pending.length ? { queue: pending.length } : {};
-  }
-  if (me.payType !== "hourly") return {};
-  const anchor = mostRecentFriday(new Date());
-  const sheets = await listTimesheetsForUser(me.id);
-  const earliestWeek = sheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
-  const terms = await getContractTermsForUser(me.id);
-  const endDate = latestContractTerm(terms)?.endDate ?? null;
-  // D9: a week past the contract end date is never something to act on.
-  const recentWeeks = recentWeekEndings(anchor, earliestWeek).filter((we) => weekAllowedByEndDate(weekdayDates(we).mon, endDate));
-  const byWeek = new Map<string, WeekActionStatus>(
-    sheets.map((t) => [t.weekEnding, { status: t.status, returnedReason: t.returnedReason }]),
-  );
-  const count = contributorActionNeededCount(recentWeeks, todayISO, byWeek);
-  return count ? { new: count } : {};
 }
 
 async function railFor(me: SessionUser): Promise<React.ReactNode> {
@@ -134,7 +100,7 @@ export async function AppShell({
   children: React.ReactNode;
 }) {
   const tabs = navFor(me.role);
-  const [rail, badges, notifications] = await Promise.all([railFor(me), badgesFor(me), getNotificationsForUser(me.id)]);
+  const [rail, badges, notifications] = await Promise.all([railFor(me), navBadgesFor(me), getNotificationsForUser(me.id)]);
 
   return (
     <>
@@ -148,7 +114,7 @@ export async function AppShell({
             {tabs.map((t) => (
               <Link key={t.tab} href={t.href} aria-current={active === t.tab ? "page" : undefined}>
                 {t.label}
-                {Boolean(badges[t.tab]) && <span className="badge">{badges[t.tab]}</span>}
+                {Boolean(badges[t.tab as keyof typeof badges]) && <span className="badge">{badges[t.tab as keyof typeof badges]}</span>}
               </Link>
             ))}
           </nav>
