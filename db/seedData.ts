@@ -400,8 +400,22 @@ const OVERDUE_STAFF = ["ashley", "jason"];
 // week, so it is the most actionable one ("late" where the calendar
 // offers one, otherwise "locked"), using the very same windowOf the
 // Tracker uses rather than a second opinion about what overdue means.
-function overdueWeeksAgo(anchorFriday: string, todayISO: string): number | null {
+//
+// Chosen PER PERSON, skipping any week that person's other scenarios
+// already own. Picking one week for everybody looked fine on one
+// anchor and silently produced no overdue CoreThread person on
+// another: the chosen week landed on Ashley Davis's late-submission
+// week, that scenario won, and the tile went back to zero. Which of
+// weeks 1-3 is past its cutoff moves with the anchor, so the collision
+// has to be resolved per person, not assumed away.
+function overdueWeeksAgoFor(userKey: string, anchorFriday: string, todayISO: string): number | null {
   for (let w = 1; w <= 3; w++) {
+    const taken =
+      (RETURNED_RESUBMITTED.userKey === userKey && RETURNED_RESUBMITTED.weeksAgo === w) ||
+      (OVERRIDE_APPROVED.userKey === userKey && OVERRIDE_APPROVED.weeksAgo === w) ||
+      (LATE_SUBMISSION.userKey === userKey && LATE_SUBMISSION.weeksAgo === w) ||
+      ACCOUNT_OVERRIDE.some((o) => o.userKey === userKey && o.weeksAgo === w);
+    if (taken) continue;
     const state = windowOf(addDays(anchorFriday, -7 * w), todayISO).state;
     if (state === "late" || state === "locked") return w;
   }
@@ -608,9 +622,9 @@ export function buildSeed(now: Date = new Date()): SeedResult {
   // until payroll confirms it. Computed once, up front, so it's the same
   // pay run for every person regardless of where they fall in the roster.
   const mostRecentPastPayRun = getMostRecentPastPayRun(todayISO);
-  // (c) The week the OVERDUE_STAFF are left sitting on, derived from
-  // this run's anchor and today, so it moves with them.
-  const overdueW = overdueWeeksAgo(anchor, todayISO);
+  // (c) The week each of the OVERDUE_STAFF is left sitting on, derived
+  // from this run's anchor and today, so it moves with them.
+  const overdueWeekByUser = new Map(OVERDUE_STAFF.map((k) => [k, overdueWeeksAgoFor(k, anchor, todayISO)]));
 
   const nextTimesheetId = makeIdGen();
   const nextEventId = makeIdGen();
@@ -748,8 +762,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       // overdue. Forced last so it wins over whatever the rules above
       // chose, and only when this week is not already carrying one of
       // the other scenarios.
-      const isOverdue =
-        overdueW !== null && weeksAgo === overdueW && OVERDUE_STAFF.includes(u.key) && !isReturned && !isOverride && !isLate;
+      const isOverdue = overdueWeekByUser.get(u.key) === weeksAgo && weeksAgo > 0;
       if (isOverdue) bucket = "draft";
 
       const timesheetId = nextTimesheetId();
