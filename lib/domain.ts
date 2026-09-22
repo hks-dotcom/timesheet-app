@@ -114,6 +114,36 @@ export function recentWeekEndings(anchorFriday: string, earliestWeekEnding: stri
 }
 
 // ---------------------------------------------------------------------------
+// contract end dates (D9) — a minimal local shape, not TimesheetSummary/
+// repo's row types, so this module stays DB-free.
+// ---------------------------------------------------------------------------
+
+export interface ContractTermRow {
+  endDate: string;
+  contractRef: string;
+  recordedAt: string;
+  kind: "set" | "extend" | "shorten";
+}
+
+// The end date in force is simply the latest recorded row — contract_terms
+// is a plain append-only log, not effective-dated like rates, so there's
+// no date to filter by, only "the newest thing anyone said." Returns null
+// for someone with no contract_terms row at all (shouldn't happen for an
+// hourly person, per the seed's own verification check, but a person with
+// none has no enforced end date rather than an error).
+export function latestContractTerm(rows: ContractTermRow[]): ContractTermRow | null {
+  if (rows.length === 0) return null;
+  return rows.reduce((latest, r) => (r.recordedAt > latest.recordedAt ? r : latest));
+}
+
+// A week is submittable only if its Monday is on or before the end date in
+// force. `weekMonday` is the week's Monday (weekEnding - 4 days).
+export function weekAllowedByEndDate(weekMonday: string, endDate: string | null): boolean {
+  if (endDate === null) return true;
+  return weekMonday <= endDate;
+}
+
+// ---------------------------------------------------------------------------
 // contributor "needs your attention" count — the nav badge on "New
 // timesheet". A minimal local shape, not TimesheetSummary, so this module
 // stays DB-free and free of a circular import with lib/repo.ts.

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { contributorActionNeededCount, recentWeekEndings, type WeekActionStatus } from "./domain";
+import {
+  contributorActionNeededCount,
+  latestContractTerm,
+  recentWeekEndings,
+  weekAllowedByEndDate,
+  type ContractTermRow,
+  type WeekActionStatus,
+} from "./domain";
 
 // The anchor is always a Friday (mostRecentFriday's contract).
 const ANCHOR = "2026-09-18";
@@ -134,3 +141,31 @@ for (const c of badgeCases) {
     assert.equal(result, c.expected);
   });
 }
+
+// latestContractTerm / weekAllowedByEndDate (D9)
+test("latestContractTerm: no rows -> null", () => {
+  assert.equal(latestContractTerm([]), null);
+});
+
+test("latestContractTerm: picks the row with the latest recordedAt, not the latest endDate or kind order", () => {
+  const rows: ContractTermRow[] = [
+    { endDate: "2026-12-31", contractRef: "CTR-A", recordedAt: "2026-01-01T00:00:00Z", kind: "set" },
+    { endDate: "2026-06-30", contractRef: "CTR-B", recordedAt: "2026-03-01T00:00:00Z", kind: "shorten" },
+    { endDate: "2027-01-31", contractRef: "CTR-C", recordedAt: "2026-02-01T00:00:00Z", kind: "extend" },
+  ];
+  const result = latestContractTerm(rows);
+  assert.equal(result?.contractRef, "CTR-B"); // recorded 2026-03-01, the latest, even though its endDate is earliest
+});
+
+test("weekAllowedByEndDate: null end date allows anything", () => {
+  assert.equal(weekAllowedByEndDate("2030-01-01", null), true);
+});
+
+test("weekAllowedByEndDate: Monday on or before the end date is allowed", () => {
+  assert.equal(weekAllowedByEndDate("2026-09-14", "2026-09-14"), true);
+  assert.equal(weekAllowedByEndDate("2026-09-14", "2026-09-20"), true);
+});
+
+test("weekAllowedByEndDate: Monday after the end date is rejected", () => {
+  assert.equal(weekAllowedByEndDate("2026-09-15", "2026-09-14"), false);
+});

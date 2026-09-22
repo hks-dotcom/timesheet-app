@@ -4,7 +4,18 @@
 // lib/status.ts's statusFromLatestEventType.
 
 import { getPool } from "./db";
-import { blockedDaysFromRows, weekdayDates, type BlockedDay, type DayKey, type Hours, type RateRow } from "./domain";
+import { fromUTCDate } from "./dateutil";
+import {
+  blockedDaysFromRows,
+  latestContractTerm,
+  rateAsOf,
+  weekdayDates,
+  type BlockedDay,
+  type ContractTermRow,
+  type DayKey,
+  type Hours,
+  type RateRow,
+} from "./domain";
 import type { Status } from "./status";
 import { statusFromLatestEventType } from "./status";
 
@@ -107,6 +118,128 @@ export async function getDirectReports(managerId: number): Promise<DirectReport[
     [managerId],
   );
   return result.rows.map((r) => ({ id: Number(r.id), name: r.name }));
+}
+
+export interface AdminUserRow {
+  id: number;
+  name: string;
+  role: Role;
+  function: string;
+  payType: PayType;
+  weeklyCap: number;
+  dailyCap: number;
+  managerId: number | null;
+  managerName: string | null;
+  active: boolean;
+  currentRate: number | null; // hourly only
+  endDate: string | null; // hourly only — the end date in force
+  endDateContractRef: string | null;
+}
+
+// The Users screen's list — every person in the admin's own entity,
+// active or inactive per the filter. Current rate and end date are each
+// resolved through the one shared function (lib/domain.ts's rateAsOf /
+// latestContractTerm), not a second SQL re-implementation.
+export async function getUsersForEntity(entityId: number, activeOnly: boolean): Promise<AdminUserRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{
+    id: string;
+    name: string;
+    role: Role;
+    function: string;
+    pay_type: PayType;
+    weekly_cap: string;
+    daily_cap: string;
+    manager_id: string | null;
+    manager_name: string | null;
+    active: boolean;
+  }>(
+    `
+      select u.id, u.name, u.role, u.function, u.pay_type, u.weekly_cap, u.daily_cap, u.active,
+        u.manager_id, m.name as manager_name
+      from users u
+      left join users m on m.id = u.manager_id
+      where u.entity_id = $1 ${activeOnly ? "and u.active = true" : ""}
+      order by u.active desc, u.name
+    `,
+    [entityId],
+  );
+
+  const todayISO = fromUTCDate(new Date());
+  const rows: AdminUserRow[] = [];
+  for (const r of result.rows) {
+    const id = Number(r.id);
+    let currentRate: number | null = null;
+    let endDate: string | null = null;
+    let endDateContractRef: string | null = null;
+    if (r.pay_type === "hourly") {
+      const rates = await getRatesForUser(id);
+      currentRate = rateAsOf(rates, todayISO)?.hourly ?? null;
+      const terms = await getContractTermsForUser(id);
+      const latest = latestContractTerm(terms);
+      endDate = latest?.endDate ?? null;
+      endDateContractRef = latest?.contractRef ?? null;
+    }
+    rows.push({
+      id,
+      name: r.name,
+      role: r.role,
+      function: r.function,
+      payType: r.pay_type,
+      weeklyCap: Number(r.weekly_cap),
+      dailyCap: Number(r.daily_cap),
+      managerId: r.manager_id === null ? null : Number(r.manager_id),
+      managerName: r.manager_name,
+      active: r.active,
+      currentRate,
+      endDate,
+      endDateContractRef,
+    });
+  }
+  return rows;
+}
+
+export async function getManagersForEntity(entityId: number): Promise<DirectReport[]> {
+  const pool = getPool();
+  const result = await pool.query<{ id: string; name: string }>(
+    "select id, name from users where entity_id = $1 and role = 'manager' and active = true order by name",
+    [entityId],
+  );
+  return result.rows.map((r) => ({ id: Number(r.id), name: r.name }));
+}
+
+export interface AdminLogRow {
+  id: number;
+  at: string;
+  actorName: string;
+  userName: string;
+  text: string;
+}
+
+export async function getAdminLogForEntity(entityId: number, limit = 60): Promise<AdminLogRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{ id: string; at: string; actor_name: string; user_name: string; text: string }>(
+    `
+      select a.id, a.at::text as at, actor.name as actor_name, u.name as user_name, a.text
+      from admin_log a
+      join users actor on actor.id = a.actor_id
+      join users u on u.id = a.user_id
+      where u.entity_id = $1
+      order by a.at desc, a.id desc
+      limit $2
+    `,
+    [entityId, limit],
+  );
+  return result.rows.map((r) => ({ id: Number(r.id), at: r.at, actorName: r.actor_name, userName: r.user_name, text: r.text }));
+}
+
+export async function getContractTermsForUser(userId: number): Promise<ContractTermRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{ end_date: string; contract_ref: string; recorded_at: string; kind: "set" | "extend" | "shorten" }>(
+    "select end_date::text as end_date, contract_ref, recorded_at::text as recorded_at, kind from contract_terms where user_id = $1",
+    [userId],
+  );
+  return result.rows.map((r) => ({ endDate: r.end_date, contractRef: r.contract_ref, recordedAt: r.recorded_at, kind: r.kind }));
 }
 
 export async function getRatesForUser(userId: number): Promise<RateRow[]> {

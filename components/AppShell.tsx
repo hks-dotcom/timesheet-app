@@ -7,7 +7,7 @@ import { ActivityTrail } from "./ActivityTrail";
 import { ResetDemoControl } from "./ResetDemoControl";
 import { SwitchButton } from "./SwitchButton";
 
-export type ActiveTab = "dashboard" | "timesheets" | "new" | "queue" | "processed" | "reports" | "admin";
+export type ActiveTab = "dashboard" | "timesheets" | "new" | "queue" | "processed" | "reports" | "users" | "admin";
 
 const ROLE_LABEL: Record<Role, string> = {
   intern: "Intern",
@@ -26,6 +26,7 @@ function navFor(role: Role): { tab: ActiveTab; href: string; label: string }[] {
   if (role === "admin") {
     return [
       { tab: "dashboard", href: "/dashboard", label: "Dashboard" },
+      { tab: "users", href: "/users", label: "Users" },
       { tab: "processed", href: "/processed", label: "Mark processed" },
       { tab: "reports", href: "/reports", label: "Reports" },
     ];
