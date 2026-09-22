@@ -946,7 +946,10 @@ export function summarize(seed: SeedResult): string {
   return lines.join("\n");
 }
 
-if (require.main === module) {
-  const seed = buildSeed(new Date());
-  console.log(summarize(seed));
-}
+// No `if (require.main === module)` block here, deliberately. lib/demo.ts
+// imports buildSeed from this file, so this module is part of the Next.js
+// SERVER bundle, which is ESM — a CommonJS `module` reference in it throws
+// "module is not defined" at module-eval time and 500s every page. Running
+// the builder on its own and printing the summary is what
+// `npm run db:seed -- --dry-run` is for (db/seed.ts), and that needs no
+// database.
