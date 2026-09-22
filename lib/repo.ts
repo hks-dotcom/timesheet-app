@@ -4,18 +4,22 @@
 // lib/status.ts's statusFromLatestEventType.
 
 import { getPool } from "./db";
-import { fromUTCDate } from "./dateutil";
+import { fromUTCDate, mostRecentFriday } from "./dateutil";
 import {
   blockedDaysFromRows,
   latestContractTerm,
   rateAsOf,
+  recentWeekEndings,
+  weekAllowedByEndDate,
   weekdayDates,
+  windowOf,
   type BlockedDay,
   type ContractTermRow,
   type DayKey,
   type Hours,
   type RateRow,
 } from "./domain";
+import { getPayRunForWeekEnding } from "./paycalendar";
 import type { Status } from "./status";
 import { statusFromLatestEventType } from "./status";
 
@@ -726,4 +730,133 @@ export async function getRecentEntityEvents(entityId: number, limit = 16): Promi
     [entityId, limit],
   );
   return result.rows.map(mapTrailEvent).reverse();
+}
+
+// ---------------------------------------------------------------------------
+// Tracker (Staff / Managers) and chases ("Notify")
+// ---------------------------------------------------------------------------
+
+async function getChaseCountsForEntity(entityId: number): Promise<Map<number, number>> {
+  const pool = getPool();
+  const result = await pool.query<{ target_user_id: string; count: string }>(
+    `
+      select c.target_user_id, count(*) as count
+      from chases c
+      join users u on u.id = c.target_user_id
+      where u.entity_id = $1
+      group by c.target_user_id
+    `,
+    [entityId],
+  );
+  return new Map(result.rows.map((r) => [Number(r.target_user_id), Number(r.count)]));
+}
+
+export interface TrackerStaffRow {
+  id: number;
+  name: string;
+  function: string;
+  managerName: string | null;
+  lastSubmittedWeek: string | null;
+  openWeeks: number; // within the usual last-4-week window, contract-end-date aware (D9)
+  overdueWeeks: number; // of those, past their own cutoff
+  chaseCount: number;
+}
+
+// Every active hourly person in the entity, with the same "open week"
+// definition New Timesheet and the contributor nav badge use — missing or
+// still a draft, not future, and never a week past the contract end date
+// in force (D9) — so Overdue here always agrees with what that person
+// would actually see if they opened New Timesheet themselves.
+export async function getTrackerStaffForEntity(entityId: number, todayISO: string): Promise<TrackerStaffRow[]> {
+  const pool = getPool();
+  const usersResult = await pool.query<{ id: string; name: string; function: string; manager_name: string | null }>(
+    `
+      select u.id, u.name, u.function, m.name as manager_name
+      from users u
+      left join users m on m.id = u.manager_id
+      where u.entity_id = $1 and u.pay_type = 'hourly' and u.active = true
+      order by u.name
+    `,
+    [entityId],
+  );
+  const chaseCounts = await getChaseCountsForEntity(entityId);
+  const anchor = mostRecentFriday(new Date());
+
+  const rows: TrackerStaffRow[] = [];
+  for (const u of usersResult.rows) {
+    const id = Number(u.id);
+    const sheets = await listTimesheetsForUser(id);
+    const lastSubmittedWeek = sheets.find((t) => t.submitted !== null)?.weekEnding ?? null;
+    const earliestWeek = sheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
+    const terms = await getContractTermsForUser(id);
+    const endDate = latestContractTerm(terms)?.endDate ?? null;
+    const byWeek = new Map(sheets.map((t) => [t.weekEnding, t]));
+    const weeks = recentWeekEndings(anchor, earliestWeek).filter((we) => weekAllowedByEndDate(weekdayDates(we).mon, endDate));
+
+    let openWeeks = 0;
+    let overdueWeeks = 0;
+    for (const we of weeks) {
+      const ts = byWeek.get(we);
+      if (ts && ts.status !== "draft") continue;
+      const win = windowOf(we, todayISO);
+      if (win.state === "future") continue;
+      openWeeks += 1;
+      if (win.state !== "open") overdueWeeks += 1;
+    }
+
+    rows.push({
+      id,
+      name: u.name,
+      function: u.function,
+      managerName: u.manager_name,
+      lastSubmittedWeek,
+      openWeeks,
+      overdueWeeks,
+      chaseCount: chaseCounts.get(id) ?? 0,
+    });
+  }
+  return rows;
+}
+
+export interface TrackerManagerRow {
+  id: number;
+  name: string;
+  waiting: number;
+  pastDue: number;
+}
+
+// Every active manager in the entity, with how many of their direct
+// reports' submitted weeks are waiting on them, and how many are already
+// past that week's own pay-run due date.
+export async function getTrackerManagersForEntity(entityId: number, todayISO: string): Promise<TrackerManagerRow[]> {
+  const managers = await getManagersForEntity(entityId);
+  const rows: TrackerManagerRow[] = [];
+  for (const m of managers) {
+    const pending = await getPendingForManager(m.id);
+    const pastDue = pending.filter((t) => todayISO > getPayRunForWeekEnding(t.weekEnding).due).length;
+    rows.push({ id: m.id, name: m.name, waiting: pending.length, pastDue });
+  }
+  return rows;
+}
+
+// D9: the deep link a "Notify" chase sends a contributor to — the same
+// newest-open-week rule New Timesheet's own default uses, so the link
+// always lands them exactly where their own page would have opened.
+export async function nextOpenWeekForContributor(userId: number, todayISO: string): Promise<string | null> {
+  const anchor = mostRecentFriday(new Date());
+  const sheets = await listTimesheetsForUser(userId);
+  const byWeek = new Map(sheets.map((t) => [t.weekEnding, t]));
+  const earliestWeek = sheets.reduce((min, t) => (t.weekEnding < min ? t.weekEnding : min), anchor);
+  const terms = await getContractTermsForUser(userId);
+  const endDate = latestContractTerm(terms)?.endDate ?? null;
+  const weeks = recentWeekEndings(anchor, earliestWeek).filter((we) => weekAllowedByEndDate(weekdayDates(we).mon, endDate));
+
+  for (const we of weeks) {
+    const ts = byWeek.get(we);
+    if (ts && ts.status !== "draft") continue;
+    const win = windowOf(we, todayISO);
+    if (win.state === "future") continue;
+    return we;
+  }
+  return null;
 }

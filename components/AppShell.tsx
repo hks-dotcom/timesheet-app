@@ -15,7 +15,7 @@ import { ActivityTrail } from "./ActivityTrail";
 import { ResetDemoControl } from "./ResetDemoControl";
 import { SwitchButton } from "./SwitchButton";
 
-export type ActiveTab = "dashboard" | "timesheets" | "new" | "queue" | "processed" | "reports" | "users" | "overrides" | "admin";
+export type ActiveTab = "dashboard" | "timesheets" | "new" | "queue" | "processed" | "reports" | "users" | "overrides" | "tracker" | "admin";
 
 const ROLE_LABEL: Record<Role, string> = {
   intern: "Intern",
@@ -37,6 +37,7 @@ function navFor(role: Role): { tab: ActiveTab; href: string; label: string }[] {
       { tab: "users", href: "/users", label: "Users" },
       { tab: "overrides", href: "/overrides", label: "Approval queue" },
       { tab: "processed", href: "/processed", label: "Mark processed" },
+      { tab: "tracker", href: "/tracker", label: "Tracker" },
       { tab: "reports", href: "/reports", label: "Reports" },
     ];
   }
@@ -85,10 +86,10 @@ async function railFor(me: SessionUser): Promise<React.ReactNode> {
     const ready = await getReadyForProcessing(me.entityId);
     return ready.length ? (
       <>
-        <b>{ready.length}</b> approved week{ready.length === 1 ? "" : "s"} ready for payroll. The tracker lands in the next pass.
+        <b>{ready.length}</b> approved week{ready.length === 1 ? "" : "s"} ready for payroll.
       </>
     ) : (
-      "Nothing waiting to be marked processed. The tracker lands in the next pass."
+      "Nothing waiting to be marked processed."
     );
   }
   if (me.role === "manager") {

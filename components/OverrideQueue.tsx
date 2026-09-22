@@ -2,12 +2,14 @@
 
 import { useActionState, useState } from "react";
 import { overrideApproveAction, type ApproveState } from "@/app/actions/timesheet";
+import { NotifyButton } from "@/components/NotifyButton";
 import { formatDateLong, formatDateTime, formatHours, formatMoney } from "@/lib/format";
 
 export interface OverrideSheet {
   id: number;
   userName: string;
   userFunction: string;
+  managerId: number | null;
   managerName: string | null;
   weekEnding: string;
   streamName: string;
@@ -53,6 +55,9 @@ export function OverrideQueue({ sheets }: { sheets: OverrideSheet[] }) {
             </span>
           </div>
           <div className="row" style={{ marginTop: 12 }}>
+            {s.managerId !== null && (
+              <NotifyButton targetId={s.managerId} targetName={s.managerName ?? "the manager"} label="Notify the manager" />
+            )}
             <button className="btn" type="button" onClick={() => setOverrideId(s.id)}>
               Override approve
             </button>

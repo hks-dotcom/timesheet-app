@@ -21,6 +21,7 @@ export default async function OverridesPage({ searchParams }: { searchParams: Pr
         id: t.id,
         userName: t.userName,
         userFunction: t.userFunction,
+        managerId: t.managerId,
         managerName: t.managerName,
         weekEnding: t.weekEnding,
         streamName: t.streamName,
