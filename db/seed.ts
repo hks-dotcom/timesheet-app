@@ -18,7 +18,7 @@ import { buildSeed, summarize } from "./seedData";
 import { writeSeed } from "./seedWrite";
 
 const TABLES = [
-  "entities", "users", "rates", "customers", "streams", "accounts",
+  "entities", "users", "rates", "contract_terms", "customers", "streams", "accounts",
   "holidays", "time_off", "timesheets", "events", "notifications",
   "chases", "admin_log", "demo_meta",
 ];
@@ -84,15 +84,22 @@ async function runVerifications(client: PoolClient) {
       `,
     },
     {
-      name: "approved events whose rate differs from the rate in force for that week ending",
+      name: "approved events whose rate or contract reference differs from the one in force for that week ending",
       sql: `
         select count(*) from events e
         join timesheets t on t.id = e.timesheet_id
         where e.type = 'approved'
-          and (e.payload->>'hourly')::numeric <> (
-            select r.hourly from rates r
-            where r.user_id = t.user_id and r.effective_from <= t.week_ending
-            order by r.effective_from desc limit 1
+          and (
+            (e.payload->>'hourly')::numeric <> (
+              select r.hourly from rates r
+              where r.user_id = t.user_id and r.effective_from <= t.week_ending
+              order by r.effective_from desc, r.recorded_at desc limit 1
+            )
+            or (e.payload->>'contractRef') <> (
+              select r.contract_ref from rates r
+              where r.user_id = t.user_id and r.effective_from <= t.week_ending
+              order by r.effective_from desc, r.recorded_at desc limit 1
+            )
           )
       `,
     },
@@ -135,6 +142,25 @@ async function runVerifications(client: PoolClient) {
         select count(*) from timesheets t
         join customers c on c.id = t.customer_id
         where t.customer_id is not null and c.entity_id <> t.entity_id
+      `,
+    },
+    {
+      name: "active hourly users with no contract_terms row",
+      sql: `
+        select count(*) from users u
+        where u.pay_type = 'hourly'
+          and not exists (select 1 from contract_terms ct where ct.user_id = u.id)
+      `,
+    },
+    {
+      name: "timesheets whose Monday falls after the contract end date in force",
+      sql: `
+        select count(*) from timesheets t
+        where (t.week_ending - interval '4 day')::date > (
+          select ct.end_date from contract_terms ct
+          where ct.user_id = t.user_id and ct.recorded_at <= (select max(e.at) from events e where e.timesheet_id = t.id)
+          order by ct.recorded_at desc limit 1
+        )
       `,
     },
   ];

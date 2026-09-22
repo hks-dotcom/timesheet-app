@@ -134,6 +134,7 @@ export default async function ReportsPage({
                   <th>Customer</th>
                   <th className="r">Hours</th>
                   <th className="r">Rate held</th>
+                  <th>Contract</th>
                   <th className="r">Pay</th>
                   {recomputeOn && (
                     <>
@@ -151,7 +152,7 @@ export default async function ReportsPage({
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={recomputeOn ? 14 : 11}>
+                    <td colSpan={recomputeOn ? 15 : 12}>
                       <div className="empty">Nothing in this range.</div>
                     </td>
                   </tr>
@@ -168,6 +169,9 @@ export default async function ReportsPage({
                       <td>{r.customerName ?? "—"}</td>
                       <td className="r num">{formatHours(r.hours)}</td>
                       <td className="r num">{formatMoney(r.rateHeld)}</td>
+                      <td className="muted" style={{ fontSize: 12 }}>
+                        {r.contractRef ?? "—"}
+                      </td>
                       <td className="r num">{formatMoney(r.pay)}</td>
                       {recomputeOn && (
                         <>
@@ -209,7 +213,7 @@ export default async function ReportsPage({
               {rows.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td colSpan={6} className="r">
+                    <td colSpan={7} className="r">
                       {rows.length} week{rows.length === 1 ? "" : "s"}
                     </td>
                     <td className="r num">{formatMoney(totalPay)}</td>

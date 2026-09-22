@@ -29,6 +29,7 @@ export interface ReportRow {
   customerName: string | null;
   hours: number;
   rateHeld: number;
+  contractRef: string | null; // the reference held on the approved event, snapshotted with the rate
   pay: number;
   expenseAccount: string | null; // blank until processed — never a resolver default
   accountOverridden: boolean; // chosen account differs from the resolver's default, snapshotted on the processed event
@@ -68,6 +69,7 @@ export function buildReportRows(
       customerName: t.customerName,
       hours,
       rateHeld,
+      contractRef: t.approved?.contractRef ?? null,
       pay,
       expenseAccount: t.processed ? t.processed.expenseAccount : null,
       accountOverridden: t.processed ? t.processed.expenseAccount !== t.processed.resolvedAccount : false,

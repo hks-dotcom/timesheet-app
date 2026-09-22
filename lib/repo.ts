@@ -4,7 +4,7 @@
 // lib/status.ts's statusFromLatestEventType.
 
 import { getPool } from "./db";
-import { blockedDaysFromRows, weekdayDates, type BlockedDay, type DayKey, type Hours } from "./domain";
+import { blockedDaysFromRows, weekdayDates, type BlockedDay, type DayKey, type Hours, type RateRow } from "./domain";
 import type { Status } from "./status";
 import { statusFromLatestEventType } from "./status";
 
@@ -109,22 +109,73 @@ export async function getDirectReports(managerId: number): Promise<DirectReport[
   return result.rows.map((r) => ({ id: Number(r.id), name: r.name }));
 }
 
-export interface RateRow {
-  hourly: number;
-  effectiveFrom: string;
-}
-
 export async function getRatesForUser(userId: number): Promise<RateRow[]> {
   const pool = getPool();
-  // effective_from must be cast to text: node-postgres parses a bare `date`
-  // column into a JS Date object, and comparing that against a plain
-  // 'YYYY-MM-DD' string in lib/domain.ts's rateAsOf (with <=) silently
-  // coerces the string to NaN, so every comparison is false.
-  const result = await pool.query<{ hourly: string; effective_from: string }>(
-    "select hourly, effective_from::text as effective_from from rates where user_id = $1 order by effective_from desc",
+  // effective_from and recorded_at must be cast to text: node-postgres
+  // parses bare `date`/`timestamptz` columns into JS Date objects, and
+  // comparing those against plain string values in lib/domain.ts's
+  // rateAsOf (with <) silently coerces the string to NaN, so every
+  // comparison is false.
+  const result = await pool.query<{ hourly: string; effective_from: string; contract_ref: string; recorded_at: string }>(
+    "select hourly, effective_from::text as effective_from, contract_ref, recorded_at::text as recorded_at from rates where user_id = $1 order by effective_from desc, recorded_at desc",
     [userId],
   );
-  return result.rows.map((r) => ({ hourly: Number(r.hourly), effectiveFrom: r.effective_from }));
+  return result.rows.map((r) => ({
+    hourly: Number(r.hourly),
+    effectiveFrom: r.effective_from,
+    contractRef: r.contract_ref,
+    recordedAt: r.recorded_at,
+  }));
+}
+
+export interface RateHistoryRow extends RateRow {
+  id: number;
+  recordedByName: string | null; // null for the original seed rows
+  supersededBy: { at: string; byName: string | null } | null; // set when a later row shares this effectiveFrom (a correction)
+}
+
+// Full rate history for the Users screen's "Rate history" list — every
+// row, including ones a same-dated correction has superseded (shown as
+// superseded, never hidden, since nothing here is ever edited or deleted).
+export async function getRateHistoryForUser(userId: number): Promise<RateHistoryRow[]> {
+  const pool = getPool();
+  const result = await pool.query<{
+    id: string;
+    hourly: string;
+    effective_from: string;
+    contract_ref: string;
+    recorded_at: string;
+    recorded_by_name: string | null;
+  }>(
+    `
+      select r.id, r.hourly, r.effective_from::text as effective_from, r.contract_ref, r.recorded_at::text as recorded_at,
+        rb.name as recorded_by_name
+      from rates r
+      left join users rb on rb.id = r.recorded_by
+      where r.user_id = $1
+      order by r.effective_from desc, r.recorded_at desc
+    `,
+    [userId],
+  );
+  const rows: RateHistoryRow[] = result.rows.map((r) => ({
+    id: Number(r.id),
+    hourly: Number(r.hourly),
+    effectiveFrom: r.effective_from,
+    contractRef: r.contract_ref,
+    recordedAt: r.recorded_at,
+    recordedByName: r.recorded_by_name,
+    supersededBy: null,
+  }));
+  // A row is superseded exactly when a later-recorded row shares its
+  // effectiveFrom — rows are already sorted latest-recorded-first within
+  // each effectiveFrom group, so the row right before it in the list (if
+  // any, same effectiveFrom) is the one that superseded it.
+  for (let i = 0; i < rows.length - 1; i++) {
+    if (rows[i].effectiveFrom === rows[i + 1].effectiveFrom) {
+      rows[i + 1].supersededBy = { at: rows[i].recordedAt, byName: rows[i].recordedByName };
+    }
+  }
+  return rows;
 }
 
 export interface StreamRow {
@@ -202,8 +253,10 @@ export interface SubmittedPayload {
 export interface ApprovedPayload {
   hourly: number;
   rateEffectiveFrom: string;
+  contractRef: string;
   override?: boolean;
   batch?: string;
+  comment?: string; // required when override is true (D6)
 }
 
 export interface ResolverInputs {

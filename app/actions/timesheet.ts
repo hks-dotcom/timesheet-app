@@ -11,6 +11,7 @@ import {
   blockedDaysFromRows,
   checkHardBlocks,
   describeViolation,
+  rateAsOf,
   sanitizeHours,
   totalHours,
   weekdayDates,
@@ -86,6 +87,24 @@ async function upsertDraft(client: PoolClient, input: DraftInput): Promise<{ id:
     row.id,
   ]);
   return { id: row.id };
+}
+
+// Fetches this user's full rate history and delegates to lib/domain.ts's
+// rateAsOf (D2's "one shared function") — never a second, simpler SQL
+// re-implementation of "the rate as of a date" that skips the
+// recorded_at tie-break a same-dated correction relies on.
+async function rateAsOfUser(client: PoolClient, userId: number, dateISO: string) {
+  const result = await client.query<{ hourly: string; effective_from: string; contract_ref: string; recorded_at: string }>(
+    "select hourly, effective_from::text as effective_from, contract_ref, recorded_at::text as recorded_at from rates where user_id = $1",
+    [userId],
+  );
+  const rates = result.rows.map((r) => ({
+    hourly: Number(r.hourly),
+    effectiveFrom: r.effective_from,
+    contractRef: r.contract_ref,
+    recordedAt: r.recorded_at,
+  }));
+  return rateAsOf(rates, dateISO);
 }
 
 // "Save draft": persists whatever is in the form, with no cap or window
@@ -366,17 +385,13 @@ export async function approveBatchAction(_prev: ApproveState, formData: FormData
     const batch = `BA-${Date.now().toString(36).toUpperCase()}`;
 
     for (const row of rows) {
-      const rateResult = await client.query<{ hourly: string; effective_from: string }>(
-        "select hourly, effective_from::text as effective_from from rates where user_id = $1 and effective_from <= $2 order by effective_from desc limit 1",
-        [row.userId, row.weekEnding],
-      );
-      const rate = rateResult.rows[0];
+      const rate = await rateAsOfUser(client, row.userId, row.weekEnding);
       if (!rate) throw new Error("No rate is in force for one of these people as of their week ending.");
 
       await client.query("insert into events (timesheet_id, type, actor_id, payload) values ($1, 'approved', $2, $3)", [
         row.id,
         me.id,
-        JSON.stringify({ hourly: Number(rate.hourly), rateEffectiveFrom: rate.effective_from, batch }),
+        JSON.stringify({ hourly: rate.hourly, rateEffectiveFrom: rate.effectiveFrom, contractRef: rate.contractRef, batch }),
       ]);
       await client.query("insert into notifications (user_id, text, target) values ($1, $2, $3)", [
         row.userId,

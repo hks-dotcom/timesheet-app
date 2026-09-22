@@ -32,7 +32,7 @@ async function insertBatch(
 // Tables whose id is a real identity column — after seeding with explicit
 // ids, the sequence needs to catch up so ordinary app inserts don't collide.
 const IDENTITY_TABLES = [
-  "entities", "users", "rates", "customers", "streams",
+  "entities", "users", "rates", "contract_terms", "customers", "streams",
   "time_off", "timesheets", "events", "notifications", "chases", "admin_log",
 ];
 
@@ -42,7 +42,7 @@ export async function writeSeed(client: PoolClient, seed: SeedResult): Promise<v
     await client.query(`
       truncate table
         admin_log, chases, notifications, events, timesheets,
-        time_off, holidays, streams, customers, accounts, rates, users, entities
+        time_off, holidays, streams, customers, accounts, contract_terms, rates, users, entities
       restart identity cascade
     `);
 
@@ -76,8 +76,15 @@ export async function writeSeed(client: PoolClient, seed: SeedResult): Promise<v
     await insertBatch(
       client,
       "rates",
-      ["id", "user_id", "hourly", "effective_from"],
-      seed.rates.map((r) => [r.id, r.userId, r.hourly, r.effectiveFrom]),
+      ["id", "user_id", "hourly", "effective_from", "contract_ref", "contract_signed_on"],
+      seed.rates.map((r) => [r.id, r.userId, r.hourly, r.effectiveFrom, r.contractRef, r.contractSignedOn]),
+    );
+
+    await insertBatch(
+      client,
+      "contract_terms",
+      ["id", "user_id", "end_date", "contract_ref", "contract_signed_on", "recorded_by", "kind"],
+      seed.contractTerms.map((c) => [c.id, c.userId, c.endDate, c.contractRef, c.contractSignedOn, c.recordedBy, c.kind]),
     );
 
     await insertBatch(

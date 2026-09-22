@@ -30,11 +30,22 @@ export function weekdayDates(weekEnding: string): Record<DayKey, string> {
 export interface RateRow {
   hourly: number;
   effectiveFrom: string;
+  contractRef: string;
+  recordedAt: string; // ISO datetime — breaks ties when two rows share effectiveFrom (a correction)
 }
 
-// The rate in force on `dateISO`: the latest effective_from on or before it.
+// The rate in force on `dateISO`: the latest effective_from on or before
+// it; when more than one row shares that effective_from (a same-dated
+// correction, never an edit — see CLAUDE.md), the latest recordedAt wins.
+// The one function every rate lookup in this app goes through — approval,
+// the seed, Reports' recompute, and the Users screen.
 export function rateAsOf(rates: RateRow[], dateISO: string): RateRow | null {
-  const candidates = rates.filter((r) => r.effectiveFrom <= dateISO).sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1));
+  const candidates = rates
+    .filter((r) => r.effectiveFrom <= dateISO)
+    .sort((a, b) => {
+      if (a.effectiveFrom !== b.effectiveFrom) return a.effectiveFrom < b.effectiveFrom ? 1 : -1;
+      return a.recordedAt < b.recordedAt ? 1 : -1;
+    });
   return candidates[0] ?? null;
 }
 

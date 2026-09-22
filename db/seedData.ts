@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ACCOUNTS, resolveExpenseAccount, type AccountRow } from "../lib/accounts";
 import { addDays, fromUTCDate, mostRecentFriday } from "../lib/dateutil";
+import { rateAsOf as domainRateAsOf, type RateRow as DomainRateRow } from "../lib/domain";
 import { roundMoney } from "../lib/format";
 import { federalHolidaysForYears } from "../lib/holidays";
 import { getMostRecentPastPayRun, getPayRunForWeekEnding, type PayRun } from "../lib/paycalendar";
@@ -125,6 +126,18 @@ export interface RateRow {
   userId: number;
   hourly: number;
   effectiveFrom: string;
+  contractRef: string;
+  contractSignedOn: string;
+}
+
+export interface ContractTermRow {
+  id: number;
+  userId: number;
+  endDate: string;
+  contractRef: string;
+  contractSignedOn: string;
+  recordedBy: number;
+  kind: "set" | "extend" | "shorten";
 }
 
 export interface HolidayRow {
@@ -191,6 +204,7 @@ export interface SeedResult {
   customers: CustomerRow[];
   users: UserRow[];
   rates: RateRow[];
+  contractTerms: ContractTermRow[];
   holidays: HolidayRow[];
   timeOff: TimeOffRow[];
   timesheets: TimesheetRow[];
@@ -279,7 +293,13 @@ interface RosterUser {
   hireWeeksAgo?: number;
   terminationWeeksAgo?: number;
   streamKey?: string;
-  rateSchedule?: { weeksAgo: number; hourly: number }[];
+  rateSchedule?: { weeksAgo: number; hourly: number; contractRef: string }[];
+  // Contract end date (D9) — every hourly person gets one. Two deliberate
+  // scenarios: Nikhil's already ended (matches his termination), Bob's
+  // (the newest hire) ends within the next 3 weeks. Everyone else is
+  // comfortably active.
+  contractEndInWeeks?: number; // weeks from the anchor; negative = already past
+  endDateContractRef?: string;
 }
 
 const ROSTER: RosterUser[] = [
@@ -290,31 +310,46 @@ const ROSTER: RosterUser[] = [
     key: "bob", name: "Bob Ellis", entityKey: "corethread", role: "intern", payType: "hourly",
     function: "Delivery", managerKey: "meera", weeklyCap: 40, dailyCap: 8, active: true,
     hireWeeksAgo: 11, streamKey: "ct-tm",
-    rateSchedule: [{ weeksAgo: 11, hourly: 22.0 }],
+    rateSchedule: [{ weeksAgo: 11, hourly: 22.0, contractRef: "CTR-2026-0301" }],
+    contractEndInWeeks: 2, endDateContractRef: "CTR-2026-0301",
   },
   {
     key: "daniel", name: "Daniel Scott", entityKey: "corethread", role: "consultant", payType: "hourly",
     function: "Delivery", managerKey: "meera", weeklyCap: 40, dailyCap: 8, active: true,
     hireWeeksAgo: 103, streamKey: "ct-milestone",
-    rateSchedule: [{ weeksAgo: 104, hourly: 68.0 }, { weeksAgo: 58, hourly: 74.0 }, { weeksAgo: 14, hourly: 79.5 }],
+    rateSchedule: [
+      { weeksAgo: 104, hourly: 68.0, contractRef: "CTR-2024-0091" },
+      { weeksAgo: 58, hourly: 74.0, contractRef: "CTR-2025-0114" },
+      { weeksAgo: 14, hourly: 79.5, contractRef: "CTR-2026-0208" },
+    ],
+    contractEndInWeeks: 52, endDateContractRef: "CTR-2026-0208",
   },
   {
     key: "ashley", name: "Ashley Davis", entityKey: "corethread", role: "consultant", payType: "hourly",
     function: "Solutions & Support", managerKey: "meera", weeklyCap: 40, dailyCap: 8, active: true,
     hireWeeksAgo: 73, streamKey: "ct-support",
-    rateSchedule: [{ weeksAgo: 73, hourly: 60.0 }, { weeksAgo: 26, hourly: 66.0 }],
+    rateSchedule: [
+      { weeksAgo: 73, hourly: 60.0, contractRef: "CTR-2025-0033" },
+      { weeksAgo: 26, hourly: 66.0, contractRef: "CTR-2026-0140" },
+    ],
+    contractEndInWeeks: 52, endDateContractRef: "CTR-2026-0140",
   },
   {
     key: "tara", name: "Tara Young", entityKey: "corethread", role: "consultant", payType: "hourly",
     function: "Sales & Marketing", managerKey: "meera", weeklyCap: 24, dailyCap: 6, active: true,
     hireWeeksAgo: 38, streamKey: "ct-internal",
-    rateSchedule: [{ weeksAgo: 38, hourly: 48.0 }, { weeksAgo: 12, hourly: 52.0 }],
+    rateSchedule: [
+      { weeksAgo: 38, hourly: 48.0, contractRef: "CTR-2025-0180" },
+      { weeksAgo: 12, hourly: 52.0, contractRef: "CTR-2026-0233" },
+    ],
+    contractEndInWeeks: 40, endDateContractRef: "CTR-2026-0233",
   },
   {
     key: "nikhil", name: "Nikhil King", entityKey: "corethread", role: "consultant", payType: "hourly",
     function: "Delivery", managerKey: "meera", weeklyCap: 40, dailyCap: 8, active: false,
     hireWeeksAgo: 103, terminationWeeksAgo: 9, streamKey: "ct-tm",
-    rateSchedule: [{ weeksAgo: 104, hourly: 62.0 }],
+    rateSchedule: [{ weeksAgo: 104, hourly: 62.0, contractRef: "CTR-2024-0090" }],
+    contractEndInWeeks: -9, endDateContractRef: "CTR-2024-0090",
   },
   // NexCore
   { key: "ananya", name: "Ananya Scott", entityKey: "nexcore", role: "manager", payType: "salaried", function: "Product Engineering", managerKey: null, weeklyCap: 40, dailyCap: 8, active: true },
@@ -323,13 +358,22 @@ const ROSTER: RosterUser[] = [
     key: "jason", name: "Jason Walker", entityKey: "nexcore", role: "consultant", payType: "hourly",
     function: "Product Engineering", managerKey: "ananya", weeklyCap: 40, dailyCap: 8, active: true,
     hireWeeksAgo: 103, streamKey: "nc-radariq",
-    rateSchedule: [{ weeksAgo: 104, hourly: 70.0 }, { weeksAgo: 49, hourly: 76.0 }, { weeksAgo: 9, hourly: 82.0 }],
+    rateSchedule: [
+      { weeksAgo: 104, hourly: 70.0, contractRef: "CTR-2024-0092" },
+      { weeksAgo: 49, hourly: 76.0, contractRef: "CTR-2025-0126" },
+      { weeksAgo: 9, hourly: 82.0, contractRef: "CTR-2026-0271" },
+    ],
+    contractEndInWeeks: 52, endDateContractRef: "CTR-2026-0271",
   },
   {
     key: "sunita", name: "Sunita Green", entityKey: "nexcore", role: "consultant", payType: "hourly",
     function: "Solutions & Support", managerKey: "ananya", weeklyCap: 40, dailyCap: 8, active: true,
     hireWeeksAgo: 57, streamKey: "nc-hiveiq",
-    rateSchedule: [{ weeksAgo: 57, hourly: 55.0 }, { weeksAgo: 18, hourly: 59.5 }],
+    rateSchedule: [
+      { weeksAgo: 57, hourly: 55.0, contractRef: "CTR-2025-0037" },
+      { weeksAgo: 18, hourly: 59.5, contractRef: "CTR-2026-0219" },
+    ],
+    contractEndInWeeks: 45, endDateContractRef: "CTR-2026-0219",
   },
 ];
 
@@ -430,23 +474,48 @@ export function buildSeed(now: Date = new Date()): SeedResult {
   for (const u of ROSTER) {
     if (!u.rateSchedule) continue;
     for (const r of u.rateSchedule) {
+      const effectiveFrom = addDays(anchor, -7 * r.weeksAgo); // the anchor Friday minus the stated weeks
       rates.push({
         id: nextRateId(),
         userId: userIdByKey.get(u.key)!,
         hourly: r.hourly,
-        effectiveFrom: addDays(anchor, -7 * r.weeksAgo), // the anchor Friday minus the stated weeks
+        effectiveFrom,
+        contractRef: r.contractRef,
+        contractSignedOn: addDays(effectiveFrom, -5), // signed a few days before it takes effect
       });
     }
   }
 
-  function rateAsOf(userKey: string, weekEndingISO: string): RateRow {
+  // Contract end dates (D9) — one 'set' row per hourly person, recorded by
+  // their entity's payroll admin at hire time.
+  const nextContractTermId = makeIdGen();
+  const contractTerms: ContractTermRow[] = [];
+  for (const u of ROSTER) {
+    if (u.contractEndInWeeks === undefined || !u.endDateContractRef) continue;
+    const endDate = addDays(anchor, 7 * u.contractEndInWeeks);
+    contractTerms.push({
+      id: nextContractTermId(),
+      userId: userIdByKey.get(u.key)!,
+      endDate,
+      contractRef: u.endDateContractRef,
+      contractSignedOn: addDays(anchor, -7 * (u.hireWeeksAgo ?? 0)),
+      recordedBy: userIdByKey.get(PAYROLL_ADMIN_BY_ENTITY[u.entityKey])!,
+      kind: "set",
+    });
+  }
+
+  // Delegates the actual lookup to lib/domain.ts's real rateAsOf (D2's
+  // "one shared function") instead of re-sorting/re-filtering here —
+  // recordedAt ties never arise in the seed's own rate schedule, so
+  // effectiveFrom stands in for it.
+  function rateAsOf(userKey: string, weekEndingISO: string): DomainRateRow {
     const userId = userIdByKey.get(userKey)!;
-    const userRates = rates
-      .filter((r) => r.userId === userId && r.effectiveFrom <= weekEndingISO)
-      .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1));
-    const r = userRates[0];
-    if (!r) throw new Error(`no rate in force for ${userKey} as of ${weekEndingISO}`);
-    return r;
+    const userRates: DomainRateRow[] = rates
+      .filter((r) => r.userId === userId)
+      .map((r) => ({ hourly: r.hourly, effectiveFrom: r.effectiveFrom, contractRef: r.contractRef, recordedAt: r.effectiveFrom }));
+    const found = domainRateAsOf(userRates, weekEndingISO);
+    if (!found) throw new Error(`no rate in force for ${userKey} as of ${weekEndingISO}`);
+    return found;
   }
 
   // Holidays: every year the seed touches, plus two years ahead.
@@ -674,8 +743,15 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       // approval
       const approverId = isOverride ? payrollAdminId : managerId;
       const approvedAt = maxDT(shiftHours(lastSubmitAt, 24), atTime(payRun.due, 12, 0));
-      const approvedPayload: Record<string, unknown> = { hourly: rate.hourly, rateEffectiveFrom: rate.effectiveFrom };
-      if (isOverride) approvedPayload.override = true;
+      const approvedPayload: Record<string, unknown> = {
+        hourly: rate.hourly,
+        rateEffectiveFrom: rate.effectiveFrom,
+        contractRef: rate.contractRef,
+      };
+      if (isOverride) {
+        approvedPayload.override = true;
+        approvedPayload.comment = "Manager out of office; approving now so this week isn't held up for payroll.";
+      }
       events.push({ id: nextEventId(), timesheetId, type: "approved", actorId: approverId, at: approvedAt, payload: approvedPayload });
 
       if (isOverride) {
@@ -814,6 +890,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     customers,
     users,
     rates,
+    contractTerms,
     holidays,
     timeOff,
     timesheets,
@@ -838,6 +915,7 @@ export function summarize(seed: SeedResult): string {
     ["customers", seed.customers.length],
     ["users", seed.users.length],
     ["rates", seed.rates.length],
+    ["contract_terms", seed.contractTerms.length],
     ["holidays", seed.holidays.length],
     ["time_off", seed.timeOff.length],
     ["timesheets", seed.timesheets.length],
