@@ -1,9 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { fromUTCDate } from "@/lib/dateutil";
 import { getPool } from "@/lib/db";
 import { getPendingForManager, nextOpenWeekForContributor, type SessionUser } from "@/lib/repo";
+import { revalidateAfterCommit } from "@/lib/revalidate";
 import { requireUser } from "@/lib/session";
 
 export type NotifyState = { error: string } | { ok: true } | null;
@@ -55,8 +55,7 @@ export async function chaseCore(me: SessionUser, formData: FormData): Promise<No
     client.release();
   }
 
-  revalidatePath("/tracker");
-  revalidatePath("/overrides");
+  revalidateAfterCommit("/tracker", "/overrides");
   return { ok: true };
 }
 

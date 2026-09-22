@@ -1,9 +1,9 @@
 "use server";
 
 import type { PoolClient } from "@neondatabase/serverless";
-import { revalidatePath } from "next/cache";
 import { ACCOUNTS, resolveExpenseAccount } from "@/lib/accounts";
 import { getPool } from "@/lib/db";
+import { revalidateAfterCommit } from "@/lib/revalidate";
 import { roundMoney } from "@/lib/format";
 import { getPayRunForWeekEnding } from "@/lib/paycalendar";
 import type { SessionUser } from "@/lib/repo";
@@ -39,6 +39,7 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
 
   const pool = getPool();
   const client = await pool.connect();
+  let committedBatch: string;
   try {
     await client.query("begin");
 
@@ -110,17 +111,19 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
     }
 
     await client.query("commit");
-
-    revalidatePath("/processed");
-    revalidatePath("/reports");
-    revalidatePath("/dashboard");
-    return { ok: true, batch };
+    committedBatch = batch;
   } catch (err) {
     await client.query("rollback");
     return { error: err instanceof Error ? err.message : "Processing failed. Nothing was changed." };
   } finally {
     client.release();
   }
+
+  // Past this point the transaction has committed. Cache invalidation
+  // lives outside the try/catch above so it can never be mapped to an
+  // { error } for a write that already happened — see lib/revalidate.ts.
+  revalidateAfterCommit("/processed", "/reports", "/dashboard");
+  return { ok: true, batch: committedBatch };
 }
 
 export async function markProcessedBatchAction(_prev: ProcessState, formData: FormData): Promise<ProcessState> {

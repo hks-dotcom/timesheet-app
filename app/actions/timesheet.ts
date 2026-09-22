@@ -1,7 +1,6 @@
 "use server";
 
 import type { PoolClient } from "@neondatabase/serverless";
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getPool } from "@/lib/db";
 import { fromUTCDate } from "@/lib/dateutil";
@@ -28,6 +27,7 @@ import {
   getTimeOffByDate,
   type SessionUser,
 } from "@/lib/repo";
+import { revalidateAfterCommit } from "@/lib/revalidate";
 import { requireUser } from "@/lib/session";
 import { statusFromLatestEventType } from "@/lib/status";
 
@@ -156,9 +156,7 @@ export async function saveDraftCore(me: SessionUser, formData: FormData): Promis
     client.release();
   }
 
-  revalidatePath("/timesheets/new");
-  revalidatePath("/timesheets");
-  revalidatePath("/dashboard");
+  revalidateAfterCommit("/timesheets/new", "/timesheets", "/dashboard");
   return { ok: true };
 }
 
@@ -293,10 +291,10 @@ export async function submitCore(me: SessionUser, formData: FormData): Promise<F
     client.release();
   }
 
-  revalidatePath("/timesheets/new");
-  revalidatePath("/timesheets");
-  revalidatePath("/dashboard");
-  revalidatePath("/queue");
+  revalidateAfterCommit("/timesheets/new", "/timesheets", "/dashboard", "/queue");
+  // redirect() is NOT routed through the helper: it throws the
+  // NEXT_REDIRECT signal Next.js needs, and swallowing it would break
+  // the redirect.
   redirect(`/timesheets?sel=${submittedId}`);
 }
 
@@ -362,8 +360,7 @@ export async function returnCore(me: SessionUser, formData: FormData): Promise<F
     client.release();
   }
 
-  revalidatePath("/queue");
-  revalidatePath("/dashboard");
+  revalidateAfterCommit("/queue", "/dashboard");
   return { ok: true };
 }
 
@@ -388,6 +385,7 @@ export async function approveBatchCore(me: SessionUser, formData: FormData): Pro
 
   const pool = getPool();
   const client = await pool.connect();
+  let committedBatch: string;
   try {
     await client.query("begin");
 
@@ -448,17 +446,18 @@ export async function approveBatchCore(me: SessionUser, formData: FormData): Pro
     }
 
     await client.query("commit");
-
-    revalidatePath("/queue");
-    revalidatePath("/dashboard");
-    revalidatePath("/timesheets");
-    return { ok: true, batch };
+    committedBatch = batch;
   } catch (err) {
     await client.query("rollback");
     return { error: err instanceof Error ? err.message : "Approval failed. Nothing was changed." };
   } finally {
     client.release();
   }
+
+  // Past this point the transaction has committed — see the note in
+  // lib/revalidate.ts on why this cannot live inside the try above.
+  revalidateAfterCommit("/queue", "/dashboard", "/timesheets");
+  return { ok: true, batch: committedBatch };
 }
 
 export async function approveBatchAction(_prev: ApproveState, formData: FormData): Promise<ApproveState> {
@@ -481,6 +480,7 @@ export async function overrideApproveCore(me: SessionUser, formData: FormData): 
 
   const pool = getPool();
   const client = await pool.connect();
+  let committedBatch: string;
   try {
     await client.query("begin");
 
@@ -540,17 +540,18 @@ export async function overrideApproveCore(me: SessionUser, formData: FormData): 
     }
 
     await client.query("commit");
-
-    revalidatePath("/dashboard");
-    revalidatePath("/timesheets");
-    revalidatePath("/processed");
-    return { ok: true, batch };
+    committedBatch = batch;
   } catch (err) {
     await client.query("rollback");
     return { error: err instanceof Error ? err.message : "Override approval failed. Nothing was changed." };
   } finally {
     client.release();
   }
+
+  // Past this point the transaction has committed — see the note in
+  // lib/revalidate.ts on why this cannot live inside the try above.
+  revalidateAfterCommit("/dashboard", "/timesheets", "/processed");
+  return { ok: true, batch: committedBatch };
 }
 
 export async function overrideApproveAction(_prev: ApproveState, formData: FormData): Promise<ApproveState> {

@@ -1,9 +1,9 @@
 "use server";
 
 import type { PoolClient } from "@neondatabase/serverless";
-import { revalidatePath } from "next/cache";
 import { FUNCTION_ACCOUNT } from "@/lib/accounts";
 import { getPool } from "@/lib/db";
+import { revalidateAfterCommit } from "@/lib/revalidate";
 import { latestContractTerm, type ContractTermRow } from "@/lib/domain";
 import { requireUser } from "@/lib/session";
 import type { SessionUser } from "@/lib/repo";
@@ -117,7 +117,7 @@ export async function saveUserCore(me: SessionUser, formData: FormData): Promise
     client.release();
   }
 
-  revalidatePath("/users");
+  revalidateAfterCommit("/users");
   return { ok: true };
 }
 
@@ -193,7 +193,7 @@ export async function addRateCore(me: SessionUser, formData: FormData): Promise<
     client.release();
   }
 
-  revalidatePath("/users");
+  revalidateAfterCommit("/users");
   return { ok: true };
 }
 
@@ -302,8 +302,7 @@ export async function recordEndDateCore(me: SessionUser, formData: FormData): Pr
     client.release();
   }
 
-  revalidatePath("/users");
-  revalidatePath("/dashboard");
+  revalidateAfterCommit("/users", "/dashboard");
   return { ok: true };
 }
 
