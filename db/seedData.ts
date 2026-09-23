@@ -485,9 +485,11 @@ const STRAGGLERS: { userKey: string; scenario: Scenario }[] = [
 // week sent back to them last week, and the week after it untouched or
 // overdue; someone else in each entity has this week submitted and
 // waiting on the manager.
+// Each with the manager's own note: two managers, two different weeks,
+// two different reasons.
 const RETURNED_OPEN = [
-  { userKey: "bob", weeksAgo: 1 },
-  { userKey: "jason", weeksAgo: 1 },
+  { userKey: "bob", weeksAgo: 1, reason: "Wednesday's hours look doubled against the client log — please check and resubmit." },
+  { userKey: "jason", weeksAgo: 1, reason: "Thursday's hours don't match the sprint board — please recheck them and resubmit." },
 ];
 const FORCE_SUBMITTED = [
   { userKey: "tara", weeksAgo: 0 },
@@ -983,7 +985,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
           type: "returned",
           actorId: managerId,
           at: returnedAt,
-          payload: { reason: "Wednesday's hours look doubled against the client log — please check and resubmit." },
+          payload: { reason: RETURNED_OPEN.find((r) => r.userKey === u.key && r.weeksAgo === weeksAgo)!.reason },
         });
         scenario.returned.push({
           entityKey: u.entityKey, timesheetId, weekEnding, userId, userName: u.name, managerId, payrollAdminId, at: returnedAt,
