@@ -11,6 +11,9 @@ synthetic data.
 The gate is a demo role picker, not a sign-in — pick any role and look around.
 All data is seeded and fictional, and the demo resets.
 
+Three guided entries on the gate walk through the point of it: *A raise
+doesn't rewrite history*, *One timesheet, every step*, and *Record a pay run*.
+
 ## The two guarantees
 
 **The pay rate is captured at approval.** A report for a week from eighteen
