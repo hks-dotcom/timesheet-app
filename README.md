@@ -41,6 +41,10 @@ withholdings, employer contributions, net pay and the payroll journal all come
 from the payroll system. Nothing here is a journal and nothing posts to a
 liability account.
 
+![Mark processed: confirming a batch marks those weeks processed and
+produces the payroll handoff file for exactly them. Each completed
+handoff stays in the Batches list.](docs/timesheet-mark-processed.png)
+
 Authentication is a demo role picker, not sign-in. Authorization is real and is
 enforced server-side at every layer — pages, route handlers and server actions
 each check for themselves, and reads are scoped by role and entity in SQL
