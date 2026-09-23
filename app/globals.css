@@ -168,12 +168,6 @@ h3 {
 .domain b {
   color: var(--ink-2);
 }
-.rebuilt {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--ink-3);
-  text-align: center;
-}
 
 /* chrome */
 .top {
