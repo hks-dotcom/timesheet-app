@@ -66,7 +66,7 @@ export default async function ReportsPage({
   const allForEntity = whoId === null ? timesheets : await getReportableForEntity(me.entityId);
   const processedPaydays = [...new Set(allForEntity.filter((t) => t.processed !== null).map((t) => t.processed!.payRun.payday))].sort().reverse();
   const handoffPayday = handoff && processedPaydays.includes(handoff) ? handoff : null;
-  const handoffFile = handoffPayday === null ? null : buildHandoff(allForEntity, me.entityName, handoffPayday);
+  const handoffFile = handoffPayday === null ? null : buildHandoff(allForEntity, me.entityName, { kind: "run", payday: handoffPayday });
 
   const totalPay = roundMoney(rows.reduce((sum, r) => sum + r.pay, 0));
   const totalRecomputed = roundMoney(rows.reduce((sum, r) => sum + (r.recomputedPay ?? 0), 0));

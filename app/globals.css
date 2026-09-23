@@ -699,6 +699,10 @@ textarea {
 .note.bad b {
   color: var(--danger);
 }
+.note.ok {
+  border-left-color: var(--ok);
+  background: var(--ok-bg);
+}
 .empty {
   padding: 26px 16px;
   text-align: center;

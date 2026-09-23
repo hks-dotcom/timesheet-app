@@ -465,6 +465,16 @@ const ACCOUNT_OVERRIDE: { userKey: string; weeksAgo: number; account: string; re
 // visible the moment the anchor moves past it.
 // ---------------------------------------------------------------------
 
+// One Mark processed batch per entity per pay run, the way an admin
+// actually works a run. Same shape as markProcessedBatchCore's
+// references (BP- plus a base-36 millisecond timestamp), derived from the
+// payday and the entity so a rebuild gives every batch the same
+// reference, and the two entities never share one.
+function seedBatchRef(entityKey: string, payday: string): string {
+  const entityOffsetMs = entityKey === "corethread" ? 0 : 3_600_000;
+  return `BP-${(Date.parse(`${payday}T10:00:00.000Z`) + entityOffsetMs).toString(36).toUpperCase()}`;
+}
+
 const PAYROLL_ADMIN_BY_ENTITY: Record<string, string> = {
   corethread: "adam",
   nexcore: "kevin",
@@ -969,6 +979,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
           resolverInputs: { userFunction: u.function, billable: stream.billable, streamDefaultAccount: stream.defaultAccount },
           payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },
           amount,
+          batch: seedBatchRef(u.entityKey, payRun.payday),
         },
       });
     }

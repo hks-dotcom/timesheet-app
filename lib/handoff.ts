@@ -1,5 +1,9 @@
-// The payroll handoff: what payroll receives for one processed pay run
-// in one entity, already coded to the ledger.
+// The payroll handoff: what payroll receives, in one entity, already
+// coded to the ledger — for one Mark processed BATCH (the file offered
+// the moment a batch is confirmed, and re-downloadable afterwards) or for
+// a whole processed PAY RUN (Reports, which includes every batch that
+// went into that run). Same builder, same format; only the slice of
+// processed weeks differs.
 //
 // Scope, stated on the page itself as well as here: this app sits
 // UPSTREAM of payroll. It knows gross pay (hours x the rate held at
@@ -9,9 +13,10 @@
 // credit columns here and no liability account: this is a costed list,
 // not a journal.
 //
-// One function builds it, and Mark Processed's confirm modal shares the
-// same summariser, so the figures an admin agrees to before confirming
-// and the figures payroll later receives cannot drift apart.
+// One function builds it for both slices, and Mark Processed's confirm
+// modal shares the same summariser, so the figures an admin agrees to
+// before confirming and the figures payroll later receives cannot drift
+// apart.
 
 import { accountName } from "./accounts";
 import { csvNumber, slug } from "./csv";
@@ -42,8 +47,13 @@ export interface HandoffSummaryLine {
   gross: number;
 }
 
+/** Which processed weeks a handoff covers. */
+export type HandoffSlice = { kind: "run"; payday: string } | { kind: "batch"; batch: string };
+
 export interface Handoff {
   entityName: string;
+  slice: HandoffSlice;
+  /** The pay run the rows are held in (for a batch, its one run; "" when the slice is empty). */
   payday: string;
   title: string;
   note: string;
@@ -88,13 +98,22 @@ export function summariseByAccount(
 }
 
 /**
- * Builds the handoff for one pay run. `timesheets` may be the whole
- * entity's reportable set; only rows processed into this pay run are
- * taken. Every amount comes from the processed event — nothing here
- * multiplies hours by a rate.
+ * Builds the handoff for one slice. `timesheets` may be the whole
+ * entity's reportable set; only processed rows in the slice are taken —
+ * a batch's weeks, or every week processed into a pay run whichever
+ * batch it went out in. Every amount and every pay run comes from the
+ * processed event — nothing here multiplies hours by a rate or asks the
+ * calendar which run a week is in.
  */
-export function buildHandoff(timesheets: TimesheetSummary[], entityName: string, payday: string): Handoff {
-  const inRun = timesheets.filter((t) => t.processed !== null && t.processed.payRun.payday === payday);
+export function buildHandoff(timesheets: TimesheetSummary[], entityName: string, slice: HandoffSlice): Handoff {
+  const inRun = timesheets.filter(
+    (t) =>
+      t.processed !== null &&
+      (slice.kind === "run" ? t.processed.payRun.payday === slice.payday : t.processed.batch === slice.batch),
+  );
+  // A batch is one pay run (markProcessedBatchCore refuses to mix runs),
+  // so its payday is the one every row carries.
+  const payday = slice.kind === "run" ? slice.payday : (inRun[0]?.processed?.payRun.payday ?? "");
 
   const detail: HandoffDetailRow[] = inRun
     .map((t) => {
@@ -130,8 +149,12 @@ export function buildHandoff(timesheets: TimesheetSummary[], entityName: string,
 
   return {
     entityName,
+    slice,
     payday,
-    title: `Payroll handoff · ${entityName} · pay run ${payday}`,
+    title:
+      slice.kind === "run"
+        ? `Payroll handoff · ${entityName} · pay run ${payday}`
+        : `Payroll handoff · ${entityName} · batch ${slice.batch} · pay run ${payday}`,
     note: HANDOFF_NOTE,
     detail,
     summary: lines,
@@ -183,8 +206,42 @@ export function handoffSummaryCsvRows(h: Handoff): unknown[][] {
   return out;
 }
 
-/** payroll-handoff-corethread-2026-08-31.csv */
+/**
+ * payroll-handoff-corethread-2026-08-31.csv for a pay run;
+ * payroll-handoff-corethread-2026-09-30-batch-bp-mfe2k1x0.csv for a batch.
+ */
 export function handoffFilename(h: Handoff, part: "detail" | "summary"): string {
-  const stem = `payroll-handoff-${slug(h.entityName)}-${h.payday}`;
+  const base = `payroll-handoff-${slug(h.entityName)}-${h.payday}`;
+  const stem = h.slice.kind === "run" ? base : `${base}-batch-${slug(h.slice.batch)}`;
   return part === "detail" ? `${stem}.csv` : `${stem}-summary.csv`;
+}
+
+export interface BatchListing {
+  batch: string;
+  payday: string;
+  weeks: number;
+  total: number;
+  processedAt: string; // the batch's processed events share a transaction; this is the latest of them
+}
+
+/** A batch reference is BP- plus base-36 — nothing else reaches a query. */
+export const BATCH_REF_PATTERN = /^BP-[0-9A-Z]{1,16}$/;
+
+/**
+ * The entity's Mark processed batches, newest first, for re-downloading
+ * a batch's file. Totals are the processed events' own amounts, summed
+ * the same way the handoff sums them.
+ */
+export function listBatches(timesheets: TimesheetSummary[], limit: number): BatchListing[] {
+  const byBatch = new Map<string, BatchListing>();
+  for (const t of timesheets) {
+    const p = t.processed;
+    if (!p?.batch || t.status !== "processed") continue;
+    const b = byBatch.get(p.batch) ?? { batch: p.batch, payday: p.payRun.payday, weeks: 0, total: 0, processedAt: t.latestEventAt };
+    b.weeks += 1;
+    b.total = roundMoney(b.total + roundMoney(p.amount));
+    if (t.latestEventAt > b.processedAt) b.processedAt = t.latestEventAt;
+    byBatch.set(p.batch, b);
+  }
+  return [...byBatch.values()].sort((a, b) => (a.processedAt < b.processedAt ? 1 : a.processedAt > b.processedAt ? -1 : 0)).slice(0, limit);
 }

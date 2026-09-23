@@ -24,7 +24,7 @@ import type { SessionUser } from "../repo";
 import { assertRole } from "./guard";
 import { statusFromLatestEventType } from "../status";
 
-export type ProcessState = { error: string } | { ok: true; batch: string } | null;
+export type ProcessState = { error: string } | { ok: true; batch: string; weeks: number; payday: string } | null;
 
 const VALID_ACCOUNTS = new Set(ACCOUNTS.map((a) => a.code));
 
@@ -40,6 +40,11 @@ export const ACCOUNT_REASON_MIN = 5;
 // read here. The pay run is COPIED from the approved event, where it was
 // decided at approval; the date an admin happens to process on never
 // moves a week into a different run.
+//
+// A batch is also the unit of the payroll handoff file offered once it
+// commits (app/processed/batch/csv), and payroll keys one run at a time,
+// so every week in a batch must be held in the same pay run. Mixing runs
+// is refused, before anything is written, like every other batch rule.
 export async function markProcessedBatchCore(me: SessionUser, formData: FormData): Promise<ProcessState> {
   const denied = assertRole(me, ["admin"]);
   if (denied) return { error: denied };
@@ -62,7 +67,7 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
 
   const pool = getPool();
   const client = await pool.connect();
-  let committedBatch: string;
+  let committed: { batch: string; weeks: number; payday: string };
   try {
     await client.query("begin");
 
@@ -121,10 +126,21 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
       }
     }
 
+    // Every snapshot is read before the first insert, so a batch that
+    // mixes pay runs is refused whole, not after half of it was written.
+    const snapshotsById = new Map<number, Awaited<ReturnType<typeof getSnapshots>>>();
+    for (const row of rows) snapshotsById.set(row.id, await getSnapshots(client, row.id));
+    const paydays = [...new Set([...snapshotsById.values()].map((x) => x.payRun.payday))].sort();
+    if (paydays.length > 1) {
+      throw new Error(
+        `These weeks are held in ${paydays.length} different pay runs (${paydays.join(", ")}). A batch is one run's handoff file — process each run separately. Nothing was processed.`,
+      );
+    }
+
     const batch = `BP-${Date.now().toString(36).toUpperCase()}`;
 
     for (const row of rows) {
-      const snapshots = await getSnapshots(client, row.id);
+      const snapshots = snapshotsById.get(row.id)!;
       const payRun = snapshots.payRun;
       const amount = roundMoney(snapshots.totalHours * snapshots.hourly);
       const account = accountByTimesheetId.get(row.id)!;
@@ -153,7 +169,7 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
     }
 
     await client.query("commit");
-    committedBatch = batch;
+    committed = { batch, weeks: rows.length, payday: paydays[0] };
   } catch (err) {
     await client.query("rollback");
     return { error: err instanceof Error ? err.message : "Processing failed. Nothing was changed." };
@@ -165,7 +181,7 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
   // lives outside the try/catch above so it can never be mapped to an
   // { error } for a write that already happened — see lib/revalidate.ts.
   revalidateAfterCommit("/processed", "/reports", "/dashboard");
-  return { ok: true, batch: committedBatch };
+  return { ok: true, ...committed };
 }
 
 // The snapshots a processed event is built from: the hours on the

@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/reports", request.url));
   }
 
-  const handoff = buildHandoff(await getReportableForEntity(me.entityId), me.entityName, payday);
+  const handoff = buildHandoff(await getReportableForEntity(me.entityId), me.entityName, { kind: "run", payday });
   if (handoff.detail.length === 0) {
     return NextResponse.redirect(new URL("/reports", request.url));
   }

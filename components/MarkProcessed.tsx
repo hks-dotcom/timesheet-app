@@ -18,11 +18,19 @@ export interface ReadyRow {
   rate: number;
   amount: number;
   payRunLabel: string;
+  payday: string | null; // the run held on the approval; a batch is one run
   defaultAccount: string;
   overrideApprovedById: number | null; // only set when approved.override is true
 }
 
-export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }) {
+export function MarkProcessed({ rows: allRows, meId }: { rows: ReadyRow[]; meId: number }) {
+  // A batch is one pay run's handoff file, so the table shows one run at
+  // a time when more than one is waiting — earliest first, since that is
+  // the one payroll keys next. The server refuses a mixed batch anyway.
+  const runs = [...new Set(allRows.map((r) => r.payday ?? ""))].sort();
+  const [runChoice, setRunChoice] = useState<string | null>(null);
+  const activeRun = runChoice !== null && runs.includes(runChoice) ? runChoice : (runs[0] ?? "");
+  const rows = allRows.filter((r) => (r.payday ?? "") === activeRun);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [accounts, setAccounts] = useState<Map<number, string>>(() => new Map(rows.map((r) => [r.id, r.defaultAccount])));
   // Why this row is going somewhere other than where the rule put it.
@@ -40,6 +48,30 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
       setSelected(new Set());
     }
   }
+
+  // Confirming IS the export step: once the batch has committed, its
+  // payroll handoff file is offered here — a download the admin starts,
+  // never an automatic one — and stays downloadable from the batch list.
+  const done = state && "ok" in state ? state : null;
+  const doneNote = done && (
+    <div className="card-b">
+      <div className="note ok">
+        <b>
+          Batch {done.batch}: {done.weeks} week{done.weeks === 1 ? "" : "s"} marked processed, in the {done.payday} run.
+        </b>{" "}
+        The payroll handoff file for exactly these weeks is ready.{" "}
+        <a className="btn sm primary" href={`/processed/batch/csv?batch=${encodeURIComponent(done.batch)}`}>
+          Download handoff file (CSV)
+        </a>{" "}
+        <a className="btn sm" href={`/processed/batch/summary/csv?batch=${encodeURIComponent(done.batch)}`}>
+          Summary (CSV)
+        </a>
+        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+          You can download it again from Batches, below.
+        </div>
+      </div>
+    </div>
+  );
 
   function toggle(id: number, checked: boolean) {
     setSelected((prev) => {
@@ -87,16 +119,40 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
   const selfOverrideRows = batchRows.filter((r) => r.overrideApprovedById === meId);
   const unexplained = batchRows.filter((r) => isOverridden(r) && reasonOf(r).length < ACCOUNT_REASON_MIN);
 
-  if (rows.length === 0) {
+  if (allRows.length === 0) {
     return (
-      <div className="card-b">
-        <div className="empty">The payroll queue is empty. Every approved week has been processed.</div>
+      <div>
+        {doneNote}
+        <div className="card-b">
+          <div className="empty">The payroll queue is empty. Every approved week has been processed.</div>
+        </div>
       </div>
     );
   }
 
   return (
     <div>
+      {doneNote}
+      {runs.length > 1 && (
+        <div className="card-b row" style={{ borderBottom: "1px solid var(--border)" }}>
+          <span className="muted">Pay run</span>
+          <div className="seg">
+            {runs.map((run) => (
+              <button
+                key={run}
+                type="button"
+                aria-current={run === activeRun ? "true" : undefined}
+                onClick={() => {
+                  setRunChoice(run);
+                  setSelected(new Set());
+                }}
+              >
+                {run || "—"} ({allRows.filter((r) => (r.payday ?? "") === run).length})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {state && "error" in state && (
         <div className="card-b">
           <div className="note bad">{state.error}</div>
@@ -205,7 +261,10 @@ export function MarkProcessed({ rows, meId }: { rows: ReadyRow[]; meId: number }
               <h3>Confirm processing</h3>
             </div>
             <div className="modal-b">
-              <p>This records that the pay run has already happened in the payroll system. It does not pay anyone.</p>
+              <p>
+                Confirming marks these weeks processed and gives you the payroll handoff file for them, so payroll can key the{" "}
+                {activeRun} run. It does not pay anyone.
+              </p>
               {selfOverrideRows.length > 0 && (
                 <div className="note bad">
                   <b>Segregation check.</b> You override-approved {selfOverrideRows.map((r) => r.userName).join(", ")}&rsquo;s week
