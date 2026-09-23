@@ -2,10 +2,33 @@
 
 import { useActionState, useState } from "react";
 import { saveDraftAction, submitAction, type FormState } from "@/app/actions/timesheet";
-import { DAY_KEYS, checkHardBlocks, describeViolation, totalHours, type BlockedDay, type DayKey, type Hours } from "@/lib/domain";
+import {
+  DAY_KEYS,
+  RETURN_WINDOW_DAYS,
+  checkHardBlocks,
+  describeViolation,
+  totalHours,
+  type BlockedDay,
+  type DayKey,
+  type Hours,
+} from "@/lib/domain";
 import { formatHours } from "@/lib/format";
 
 const DAY_LABEL: Record<DayKey, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri" };
+
+const RETURN_WINDOW = RETURN_WINDOW_DAYS;
+
+// Why a late week is late, in the words the form and the server both use.
+const LATE_WHY: Record<"past-cutoff" | "original-late" | "return-window-passed", string> = {
+  "past-cutoff": "This week is past its cutoff.",
+  "original-late": "It was first filed after its cutoff, so the resubmission is late too.",
+  "return-window-passed": `It was returned more than ${RETURN_WINDOW_DAYS} days ago, so resubmitting now is late.`,
+};
+const LATE_HEADLINE: Record<"past-cutoff" | "original-late" | "return-window-passed", string> = {
+  "past-cutoff": "Past the cutoff, so it is marked late.",
+  "original-late": "First filed after its cutoff, so it is marked late.",
+  "return-window-passed": `Resubmitted more than ${RETURN_WINDOW_DAYS} days after the return, so it is marked late.`,
+};
 
 export interface StreamOption {
   id: number;
@@ -30,6 +53,9 @@ export interface TimesheetFormProps {
   editable: boolean;
   returnedReason: string | null;
   windowState: "future" | "open" | "late" | "locked";
+  // From lib/domain.ts's windowOf, read from this week's own history.
+  lateBecause: "past-cutoff" | "original-late" | "return-window-passed" | null;
+  resubmission: { returnedOn: string; windowEnds: string; withinWindow: boolean; originalOnTime: boolean } | null;
   lockDate: string;
   // Where the week would be paid if approved today (lib/domain.ts's
   // windowOf) — a projection. The run is decided at approval.
@@ -87,7 +113,7 @@ export function TimesheetForm(props: TimesheetFormProps) {
       return;
     }
     if (props.windowState === "late" && lateReason.trim().length < 5) {
-      setClientError("This week is past its cutoff — say why it is late (at least 5 characters).");
+      setClientError(`${LATE_WHY[props.lateBecause ?? "past-cutoff"]} Say why, in at least 5 characters.`);
       return;
     }
     setShowConfirm(true);
@@ -100,19 +126,32 @@ export function TimesheetForm(props: TimesheetFormProps) {
           <h2>Week ending {new Date(props.weekEnding).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</h2>
           <p>Monday to Friday. Blocked days cannot be filled.</p>
         </div>
-        {props.windowState === "late" && <span className="pill warn">Past cutoff</span>}
+        {props.windowState === "late" && <span className="pill warn">{props.resubmission ? "Late resubmission" : "Past cutoff"}</span>}
+        {props.windowState === "open" && props.resubmission && <span className="pill">Resubmission</span>}
         {props.windowState === "locked" && <span className="pill bad">Locked</span>}
       </div>
       <div className="card-b">
         {props.returnedReason && props.editable && (
           <div className="note bad">
             <b>Returned.</b> {props.returnedReason}
+            {props.resubmission && props.windowState === "open" && (
+              <div style={{ marginTop: 6 }}>
+                You filed this on time, so resubmitting by {props.resubmission.windowEnds} needs no late reason.
+              </div>
+            )}
+            {props.resubmission && props.windowState === "late" && (
+              <div style={{ marginTop: 6 }}>{LATE_WHY[props.lateBecause ?? "past-cutoff"]} Say why below.</div>
+            )}
           </div>
         )}
         {!props.editable && <div className="note">This week can no longer be edited.</div>}
         {props.windowState === "locked" && props.editable && (
           <div className="note bad">
-            <b>Locked.</b> This week closed on {props.lockDate}. Ask your manager to reopen it.
+            <b>Locked.</b>{" "}
+            {props.resubmission
+              ? `It was returned on ${props.resubmission.returnedOn} and the ${RETURN_WINDOW} days to resubmit ran out on ${props.resubmission.windowEnds}.`
+              : `This week closed on ${props.lockDate}.`}{" "}
+            Ask your manager to reopen it.
           </div>
         )}
 
@@ -225,13 +264,13 @@ export function TimesheetForm(props: TimesheetFormProps) {
           {props.windowState === "late" && props.editable && (
             <div style={{ marginTop: 12 }}>
               <label className="field">
-                <span>Reason for the delay (required past cutoff)</span>
+                <span>Reason for the delay (required)</span>
                 <textarea
                   name="lateReason"
                   form="timesheet-form"
                   value={lateReason}
                   onChange={(e) => setLateReason(e.target.value)}
-                  placeholder="Why is this week being filed after the cutoff?"
+                  placeholder={props.resubmission ? "Why is this week being resubmitted late?" : "Why is this week being filed after the cutoff?"}
                 />
               </label>
             </div>
@@ -283,9 +322,14 @@ export function TimesheetForm(props: TimesheetFormProps) {
               </p>
               {props.windowState === "late" ? (
                 <div className="note bad">
-                  <b>Past the cutoff, so it is marked late.</b> If {props.managerName} approves it by {props.projectedDue}, it
-                  pays on {props.projectedPayday}. Approved after that, it goes into a later run.
+                  <b>{LATE_HEADLINE[props.lateBecause ?? "past-cutoff"]}</b> If {props.managerName} approves it by {props.projectedDue},
+                  it pays on {props.projectedPayday}. Approved after that, it goes into a later run.
                 </div>
+              ) : props.resubmission ? (
+                <p>
+                  A resubmission after a return, inside its {RETURN_WINDOW} days, so it is not late. Approved by{" "}
+                  {props.projectedDue}, it pays on {props.projectedPayday}.
+                </p>
               ) : (
                 <p>
                   Approved by {props.projectedDue}, it pays on {props.projectedPayday}.

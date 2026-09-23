@@ -47,9 +47,20 @@ export default async function NewTimesheetPage({
   const caps = latestCapTerm(await getCapTermsForUser(me.id));
   const contractTerms = await getContractTermsForUser(me.id);
   const endDate = latestContractTerm(contractTerms)?.endDate ?? null;
-  const recentWeeks = offerableWeeks(anchor, earliestWeek, endDate);
+  // A week sitting returned and still inside its return window stays
+  // offered even when it has aged out of the four recent weeks: the
+  // return restarted its clock, so it must not vanish from here.
+  const withinReturnWindow = myTimesheets
+    .filter((t) => windowOf(t.weekEnding, todayISO, t.returnHistory).resubmission?.withinWindow)
+    .map((t) => t.weekEnding);
+  const recentWeeks = [...new Set([...offerableWeeks(anchor, earliestWeek, endDate), ...withinReturnWindow])].sort().reverse();
 
-  const rows = recentWeeks.map((we) => ({ weekEnding: we, timesheet: byWeek.get(we) ?? null, window: windowOf(we, todayISO) }));
+  // Each week's window reads its own filing history (first submission,
+  // outstanding return) — the same rule submitCore enforces.
+  const rows = recentWeeks.map((we) => {
+    const timesheet = byWeek.get(we) ?? null;
+    return { weekEnding: we, timesheet, window: windowOf(we, todayISO, timesheet?.returnHistory) };
+  });
 
   if (rows.length === 0) {
     return (
@@ -124,7 +135,8 @@ export default async function NewTimesheetPage({
                         )}
                       </td>
                       <td>
-                        {r.window.state === "open" && "Open, on time"}
+                        {r.window.state === "open" &&
+                          (r.window.resubmission ? `Returned · resubmit by ${formatDateShort(r.window.resubmission.windowEnds)}, no reason needed` : "Open, on time")}
                         {r.window.state === "late" && <span className="pill warn">Late &mdash; reason required</span>}
                         {r.window.state === "future" && `Opens ${formatDateShort(r.window.open)}`}
                         {r.window.state === "locked" && <span className="pill bad">Locked {formatDateShort(r.window.lock)}</span>}
@@ -162,6 +174,8 @@ export default async function NewTimesheetPage({
         editable={editable}
         returnedReason={ts?.returnedReason ?? null}
         windowState={win.state}
+        lateBecause={win.lateBecause}
+        resubmission={win.resubmission}
         lockDate={win.lock}
         projectedPayday={win.projected.payday}
         projectedDue={win.projected.due}
