@@ -568,8 +568,11 @@ tbody tr.clickable:hover td {
    tokens. scroll-margin keeps the sticky header off it when a #ts-<id>
    fragment scrolls it into view. */
 tbody tr.sel td {
-  box-shadow: inset 3px 0 0 var(--ink);
   background: var(--sunk);
+}
+/* The marker belongs to the row, so only its first cell draws it. */
+tbody tr.sel td:first-child {
+  box-shadow: inset 3px 0 0 var(--ink);
 }
 tbody tr[id^="ts-"] {
   scroll-margin-top: 96px;
