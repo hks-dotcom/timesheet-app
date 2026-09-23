@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <style>
+    :root { --ink: #14304F; --cut: #FBFAF8; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #FFFFFF; --cut: #1B1A17; }
+    }
+  </style>
+  <path d="M4 3.4a1.8 1.8 0 0 1 1.8-1.8h7.4L17.4 6v5.6a7 7 0 0 0-7.3 9.4H5.8A1.8 1.8 0 0 1 4 19.2Z" fill="var(--ink)"/>
+  <rect x="6.6" y="7.6" width="6.6" height="2.1" rx="1.05" fill="var(--cut)"/>
+  <rect x="6.6" y="12" width="6.6" height="2.1" rx="1.05" fill="var(--cut)"/>
+  <circle cx="16.8" cy="16.8" r="7" fill="var(--cut)"/>
+  <circle cx="16.8" cy="16.8" r="5.6" fill="var(--ink)"/>
+  <path d="M16.8 13.4v3.5h2.6" fill="none" stroke="var(--cut)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
