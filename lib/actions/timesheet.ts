@@ -22,6 +22,7 @@ import { fromUTCDate } from "../dateutil";
 import {
   DAY_KEYS,
   MAX_HOURS_PER_DAY,
+  RETURN_WINDOW_DAYS,
   blockedDaysFromRows,
   checkHardBlocks,
   describeViolation,
@@ -34,6 +35,7 @@ import {
   weekdayDates,
   windowOf,
   type Hours,
+  type ReturnHistory,
 } from "../domain";
 import {
   getActiveCustomersForEntity,
@@ -122,6 +124,27 @@ async function upsertDraft(client: PoolClient, input: DraftInput): Promise<{ id:
     row.id,
   ]);
   return { id: row.id };
+}
+
+// The filing history windowOf's late rule reads, straight from events:
+// the UTC date of this week's first submitted event, and — only while the
+// week's latest event is a return — the UTC date of that return.
+async function readReturnHistory(userId: number, weekEnding: string): Promise<ReturnHistory> {
+  const result = await getPool().query<{ first_submitted_on: string | null; latest_type: string | null; latest_on: string | null }>(
+    `
+      select
+        (select to_char(min(e.at) at time zone 'UTC', 'YYYY-MM-DD') from events e where e.timesheet_id = t.id and e.type = 'submitted') as first_submitted_on,
+        latest.type as latest_type,
+        to_char(latest.at at time zone 'UTC', 'YYYY-MM-DD') as latest_on
+      from timesheets t
+      left join lateral (select type, at from events where timesheet_id = t.id order by at desc, id desc limit 1) latest on true
+      where t.user_id = $1 and t.week_ending = $2
+    `,
+    [userId, weekEnding],
+  );
+  const row = result.rows[0];
+  if (!row) return { firstSubmittedOn: null, returnedOn: null };
+  return { firstSubmittedOn: row.first_submitted_on, returnedOn: row.latest_type === "returned" ? row.latest_on : null };
 }
 
 // Fetches this user's full rate history and delegates to lib/domain.ts's
@@ -229,14 +252,30 @@ export async function submitCore(me: SessionUser, formData: FormData): Promise<F
     }
   }
 
+  // On time or late is decided here, from the week's own event history
+  // — the first submission's date and any outstanding return — through
+  // the one rule in lib/domain.ts's windowOf. A return restarts the clock:
+  // a week first filed on time and resubmitted within RETURN_WINDOW_DAYS of
+  // the return is not late and needs no reason, even past the 14-day lock.
   const todayISO = fromUTCDate(new Date());
-  const win = windowOf(weekEnding, todayISO);
+  const history = await readReturnHistory(me.id, weekEnding);
+  const win = windowOf(weekEnding, todayISO, history);
   if (win.state === "future") return { error: "This week hasn't opened yet." };
-  if (win.state === "locked") return { error: `This week closed on ${win.lock}. Ask your manager to reopen it.` };
+  if (win.state === "locked") {
+    return win.resubmission
+      ? { error: `This week was returned on ${win.resubmission.returnedOn} and its ${RETURN_WINDOW_DAYS} days to resubmit ran out on ${win.resubmission.windowEnds}; it closed on ${win.lock}. Ask your manager to reopen it.` }
+      : { error: `This week closed on ${win.lock}. Ask your manager to reopen it.` };
+  }
 
   const late = win.state === "late";
   if (late && lateReason.length < 5) {
-    return { error: "This week is past its cutoff — say why it is late (at least 5 characters)." };
+    const why =
+      win.lateBecause === "return-window-passed"
+        ? `It was returned on ${win.resubmission!.returnedOn} and is being resubmitted more than ${RETURN_WINDOW_DAYS} days later`
+        : win.lateBecause === "original-late"
+          ? "It was first filed after its cutoff, so the resubmission is late too"
+          : "This week is past its cutoff";
+    return { error: `${why} — say why it is late (at least 5 characters).` };
   }
 
   // The end date in force gates submission independently of the

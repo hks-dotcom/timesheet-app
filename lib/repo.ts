@@ -18,6 +18,7 @@ import {
   type DayKey,
   type Hours,
   type RateRow,
+  type ReturnHistory,
 } from "./domain";
 import { calendarSlotForWeek } from "./paycalendar";
 import type { Status } from "./status";
@@ -524,6 +525,10 @@ export interface TimesheetSummary {
   approvedById: number | null;
   approvedByName: string | null;
   approvedAt: string | null; // when the latest approval was recorded
+  // The filing history the late rule reads (lib/domain.ts's windowOf):
+  // the first submission's date, and the outstanding return's date if
+  // the week is sitting returned right now.
+  returnHistory: ReturnHistory;
 }
 
 const TIMESHEET_SELECT = `
@@ -533,7 +538,8 @@ const TIMESHEET_SELECT = `
     t.stream_id as "streamId", s.name as "streamName", s.billable, s.default_account as "streamDefaultAccount",
     t.customer_id as "customerId", c.name as "customerName", t.notes, t.draft_hours as "draftHours",
     latest.type as "latestType", latest.at::text as "latestAt",
-    ret.payload as "returnedPayload",
+    ret.payload as "returnedPayload", ret.returned_on as "returnedOn",
+    (select to_char(min(fs.at) at time zone 'UTC', 'YYYY-MM-DD') from events fs where fs.timesheet_id = t.id and fs.type = 'submitted') as "firstSubmittedOn",
     sub.payload as "submittedPayload",
     appr.payload as "approvedPayload",
     proc.payload as "processedPayload",
@@ -547,7 +553,8 @@ const TIMESHEET_SELECT = `
     select type, at from events where timesheet_id = t.id order by at desc, id desc limit 1
   ) latest on true
   left join lateral (
-    select payload from events where timesheet_id = t.id and type = 'returned' order by at desc, id desc limit 1
+    select payload, to_char(at at time zone 'UTC', 'YYYY-MM-DD') as returned_on
+      from events where timesheet_id = t.id and type = 'returned' order by at desc, id desc limit 1
   ) ret on true
   left join lateral (
     select payload from events where timesheet_id = t.id and type = 'submitted' order by at desc, id desc limit 1
@@ -592,6 +599,11 @@ function mapTimesheetRow(row: Record<string, unknown>): TimesheetSummary {
     approvedById: row.approvedById === null ? null : Number(row.approvedById),
     approvedByName: row.approvedByName === null ? null : String(row.approvedByName),
     approvedAt: row.approvedAt === null || row.approvedAt === undefined ? null : String(row.approvedAt),
+    returnHistory: {
+      firstSubmittedOn: row.firstSubmittedOn === null ? null : String(row.firstSubmittedOn),
+      // Outstanding only while the return is the latest thing that happened.
+      returnedOn: row.latestType === "returned" && row.returnedOn !== null ? String(row.returnedOn) : null,
+    },
   };
 }
 
@@ -937,7 +949,9 @@ export async function getTrackerStaffForEntity(entityId: number, todayISO: strin
     for (const we of weeks) {
       const ts = byWeek.get(we);
       if (ts && ts.status !== "draft") continue;
-      const win = windowOf(we, todayISO);
+      // A week returned and still inside its return window is not overdue:
+      // the same rule, from the same history, that submitCore applies.
+      const win = windowOf(we, todayISO, ts?.returnHistory);
       if (win.state === "future") continue;
       openWeeks += 1;
       if (win.state !== "open") overdueWeeks += 1;
@@ -994,7 +1008,7 @@ export async function nextOpenWeekForContributor(userId: number, todayISO: strin
   for (const we of weeks) {
     const ts = byWeek.get(we);
     if (ts && ts.status !== "draft") continue;
-    const win = windowOf(we, todayISO);
+    const win = windowOf(we, todayISO, ts?.returnHistory);
     if (win.state === "future") continue;
     return we;
   }

@@ -4,7 +4,9 @@ import {
   contributorActionNeededCount,
   latestContractTerm,
   recentWeekEndings,
+  returnHistoryBefore,
   weekAllowedByEndDate,
+  windowOf,
   type ContractTermRow,
   type WeekActionStatus,
 } from "./domain";
@@ -168,4 +170,108 @@ test("weekAllowedByEndDate: Monday on or before the end date is allowed", () => 
 
 test("weekAllowedByEndDate: Monday after the end date is rejected", () => {
   assert.equal(weekAllowedByEndDate("2026-09-15", "2026-09-14"), false);
+});
+
+// ---------------------------------------------------------------------------
+// windowOf with a return: a return restarts the clock, it does not stop it.
+// Week ending 2026-09-11: its slot is the 2026-09-15 run, cutoff 09-11;
+// the 14-day lock is 09-25.
+// ---------------------------------------------------------------------------
+
+const WE = "2026-09-11";
+const lateCases: {
+  why: string;
+  today: string;
+  history?: { firstSubmittedOn: string | null; returnedOn: string | null };
+  state: string;
+  lateBecause: string | null;
+}[] = [
+  { why: "no return, past cutoff: late", today: "2026-09-14", state: "late", lateBecause: "past-cutoff" },
+  { why: "no return, past the lock: locked", today: "2026-09-26", state: "locked", lateBecause: null },
+  {
+    why: "filed on time, returned after the cutoff, resubmitted within 7 days: on time, no reason",
+    today: "2026-09-20",
+    history: { firstSubmittedOn: "2026-09-11", returnedOn: "2026-09-16" },
+    state: "open",
+    lateBecause: null,
+  },
+  {
+    why: "the same, on the 7th day after the return: still on time",
+    today: "2026-09-23",
+    history: { firstSubmittedOn: "2026-09-11", returnedOn: "2026-09-16" },
+    state: "open",
+    lateBecause: null,
+  },
+  {
+    why: "the same, 8 days after the return: late, the window has passed",
+    today: "2026-09-24",
+    history: { firstSubmittedOn: "2026-09-11", returnedOn: "2026-09-16" },
+    state: "late",
+    lateBecause: "return-window-passed",
+  },
+  {
+    why: "first filed late, returned, resubmitted inside the window: still late",
+    today: "2026-09-18",
+    history: { firstSubmittedOn: "2026-09-12", returnedOn: "2026-09-16" },
+    state: "late",
+    lateBecause: "original-late",
+  },
+  {
+    why: "filed on time, returned late, resubmitted past the lock but inside the window: open, not locked",
+    today: "2026-09-28",
+    history: { firstSubmittedOn: "2026-09-11", returnedOn: "2026-09-24" },
+    state: "open",
+    lateBecause: null,
+  },
+  {
+    why: "first filed late, returned late, past the lock but inside the window: late, not locked",
+    today: "2026-09-28",
+    history: { firstSubmittedOn: "2026-09-12", returnedOn: "2026-09-24" },
+    state: "late",
+    lateBecause: "original-late",
+  },
+  {
+    why: "outside both the return window and the lock: locked, as before",
+    today: "2026-09-28",
+    history: { firstSubmittedOn: "2026-09-11", returnedOn: "2026-09-12" },
+    state: "locked",
+    lateBecause: null,
+  },
+  {
+    why: "returned, but today is still on or before the cutoff: simply open",
+    today: "2026-09-11",
+    history: { firstSubmittedOn: "2026-09-10", returnedOn: "2026-09-11" },
+    state: "open",
+    lateBecause: null,
+  },
+  {
+    why: "a return that is no longer outstanding (resubmitted since): the plain rule",
+    today: "2026-09-20",
+    history: { firstSubmittedOn: "2026-09-11", returnedOn: null },
+    state: "late",
+    lateBecause: "past-cutoff",
+  },
+];
+
+for (const c of lateCases) {
+  test(`windowOf(${WE}) on ${c.today}: ${c.why}`, () => {
+    const w = windowOf(WE, c.today, c.history);
+    assert.equal(w.state, c.state);
+    assert.equal(w.lateBecause, c.lateBecause);
+  });
+}
+
+test("returnHistoryBefore: first submission's date, and the return only while it is the latest event", () => {
+  const events = [
+    { type: "created", at: "2026-09-07T09:00:00.000Z" },
+    { type: "submitted", at: "2026-09-11T17:00:00.000Z" },
+    { type: "returned", at: "2026-09-16T10:00:00.000Z" },
+    { type: "submitted", at: "2026-09-18T12:00:00.000Z" },
+  ];
+  // Just before the resubmission: the return is outstanding.
+  assert.deepEqual(returnHistoryBefore(events, "2026-09-18T12:00:00.000Z"), { firstSubmittedOn: "2026-09-11", returnedOn: "2026-09-16" });
+  // After it: resubmitted, nothing outstanding, but the first submission still counts.
+  assert.deepEqual(returnHistoryBefore(events, "2026-09-19T00:00:00.000Z"), { firstSubmittedOn: "2026-09-11", returnedOn: null });
+  // Before anything was filed.
+  assert.deepEqual(returnHistoryBefore(events, "2026-09-10T00:00:00.000Z"), { firstSubmittedOn: null, returnedOn: null });
 });

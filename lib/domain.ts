@@ -79,6 +79,19 @@ export function blockedDaysFromRows(
 
 export type WindowState = "future" | "open" | "late" | "locked";
 
+// How long a return keeps a week open for its owner. A return restarts
+// the clock; it does not stop it.
+export const RETURN_WINDOW_DAYS = 7;
+
+// What the event history says about a week's filing so far — the source
+// of truth, read from events, never a column. `returnedOn` is set only
+// while a return is outstanding (the week's latest event is "returned"):
+// the date of that return.
+export interface ReturnHistory {
+  firstSubmittedOn: string | null; // UTC date of the week's FIRST submitted event
+  returnedOn: string | null; // UTC date of the outstanding return, if any
+}
+
 export interface SubmissionWindow {
   state: WindowState;
   open: string; // Monday of the week
@@ -89,17 +102,75 @@ export interface SubmissionWindow {
   // (payRunForApproval) and snapshotted then; a later approval can land
   // later. Always at least the slot.
   projected: PayRun;
+  // Why a "late" week is late: filed after its cutoff with no return
+  // involved; resubmitted after a return but the original filing was
+  // itself late; or resubmitted more than RETURN_WINDOW_DAYS after the
+  // return. null unless state is "late".
+  lateBecause: "past-cutoff" | "original-late" | "return-window-passed" | null;
+  // Set while a return is outstanding and past the week's own cutoff:
+  // the return, the last day of its window, and whether the resubmission
+  // is inside it. Inside the window the 14-day lock does not apply.
+  resubmission: { returnedOn: string; windowEnds: string; withinWindow: boolean; originalOnTime: boolean } | null;
 }
 
-export function windowOf(weekEnding: string, todayISO: string): SubmissionWindow {
+/**
+ * Where a week stands for filing today. Without history this is the
+ * plain calendar rule: open until its cutoff, late (a reason required)
+ * until week ending + 14, then locked.
+ *
+ * With an outstanding return, the return restarts the clock:
+ * - original filing on time, resubmitted within RETURN_WINDOW_DAYS of
+ *   the return: not late, no reason, and not locked even past week
+ *   ending + 14 — the manager's return is not the owner's delay;
+ * - original filing late: still late, still needs a reason (the window
+ *   still keeps it from locking);
+ * - more than RETURN_WINDOW_DAYS after the return: late and needs a
+ *   reason, and the ordinary lock applies — a return is not an
+ *   unlimited extension.
+ * Before the week's own cutoff none of that matters: it is simply open.
+ */
+export function windowOf(weekEnding: string, todayISO: string, history?: ReturnHistory): SubmissionWindow {
   const open = addDays(weekEnding, -4);
   const lock = addDays(weekEnding, 14);
   const slot = calendarSlotForWeek(weekEnding);
   const projected = payRunForApproval(weekEnding, todayISO);
-  if (todayISO < open) return { state: "future", open, lock, slot, projected };
-  if (todayISO <= slot.cutoff) return { state: "open", open, lock, slot, projected };
-  if (todayISO <= lock) return { state: "late", open, lock, slot, projected };
-  return { state: "locked", open, lock, slot, projected };
+  const base = { open, lock, slot, projected, lateBecause: null, resubmission: null };
+  if (todayISO < open) return { ...base, state: "future" };
+  if (todayISO <= slot.cutoff) return { ...base, state: "open" };
+
+  if (history?.returnedOn) {
+    const windowEnds = addDays(history.returnedOn, RETURN_WINDOW_DAYS);
+    const withinWindow = todayISO <= windowEnds;
+    const originalOnTime = history.firstSubmittedOn !== null && history.firstSubmittedOn <= slot.cutoff;
+    const resubmission = { returnedOn: history.returnedOn, windowEnds, withinWindow, originalOnTime };
+    if (withinWindow) {
+      return originalOnTime
+        ? { ...base, resubmission, state: "open" }
+        : { ...base, resubmission, state: "late", lateBecause: "original-late" };
+    }
+    if (todayISO <= lock) {
+      return { ...base, resubmission, state: "late", lateBecause: originalOnTime ? "return-window-passed" : "original-late" };
+    }
+    return { ...base, resubmission, state: "locked" };
+  }
+
+  if (todayISO <= lock) return { ...base, state: "late", lateBecause: "past-cutoff" };
+  return { ...base, state: "locked" };
+}
+
+/**
+ * The ReturnHistory as it stood just before `momentISO`, from a week's
+ * events in order — what the server read when a past submission was
+ * made. Lets a check judge every recorded submission by the same rule.
+ */
+export function returnHistoryBefore(events: { type: string; at: string }[], momentISO: string): ReturnHistory {
+  const before = events.filter((e) => new Date(e.at).getTime() < new Date(momentISO).getTime());
+  const firstSubmitted = before.find((e) => e.type === "submitted");
+  const latest = before[before.length - 1];
+  return {
+    firstSubmittedOn: firstSubmitted ? firstSubmitted.at.slice(0, 10) : null,
+    returnedOn: latest?.type === "returned" ? latest.at.slice(0, 10) : null,
+  };
 }
 
 // The recent weeks a contributor might work with: this week and up to
