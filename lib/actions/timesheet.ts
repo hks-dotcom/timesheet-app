@@ -44,6 +44,8 @@ import {
   getTimeOffByDate,
   type SessionUser,
 } from "../repo";
+import { payRunForApproval } from "../paycalendar";
+import { payRunRef } from "../payrun";
 import { revalidateAfterCommit } from "../revalidate";
 import { statusFromLatestEventType } from "../status";
 
@@ -409,7 +411,9 @@ export type ApproveState = { error: string } | { ok: true; batch: string } | nul
 // batch reference. Every sheet is re-checked still submitted inside the
 // transaction — if any isn't, the whole batch fails and nothing changes.
 // Each event snapshots the rate in force for THAT sheet's own week ending,
-// read right now, at the moment of approval.
+// read right now, at the moment of approval — and the pay run the week
+// is paid in, decided now by the approval date (payRunForApproval) and
+// never again: processing copies it, and no screen recomputes it.
 export async function approveBatchCore(me: SessionUser, formData: FormData): Promise<ApproveState> {
   const denied = assertRole(me, ["manager"]);
   if (denied) return { error: denied };
@@ -464,15 +468,17 @@ export async function approveBatchCore(me: SessionUser, formData: FormData): Pro
     }
 
     const batch = `BA-${Date.now().toString(36).toUpperCase()}`;
+    const approvedOn = fromUTCDate(new Date());
 
     for (const row of rows) {
       const rate = await rateAsOfUser(client, row.userId, row.weekEnding);
       if (!rate) throw new Error("No rate is in force for one of these people as of their week ending.");
+      const payRun = payRunRef(payRunForApproval(row.weekEnding, approvedOn));
 
       await client.query("insert into events (timesheet_id, type, actor_id, payload) values ($1, 'approved', $2, $3)", [
         row.id,
         me.id,
-        JSON.stringify({ hourly: rate.hourly, rateEffectiveFrom: rate.effectiveFrom, contractRef: rate.contractRef, batch }),
+        JSON.stringify({ hourly: rate.hourly, rateEffectiveFrom: rate.effectiveFrom, contractRef: rate.contractRef, payRun, batch }),
       ]);
       await client.query("insert into notifications (user_id, text, target) values ($1, $2, $3)", [
         row.userId,
@@ -498,7 +504,8 @@ export async function approveBatchCore(me: SessionUser, formData: FormData): Pro
 
 // A payroll admin approving a week directly, bypassing the assigned
 // manager. Writes the SAME approved-event shape a normal approval does
-// (hourly/rateEffectiveFrom/contractRef via the one shared rateAsOf path)
+// (hourly/rateEffectiveFrom/contractRef via the one shared rateAsOf path,
+// and the pay run decided by the same payRunForApproval on today's date)
 // plus override: true, a distinct "OV-" batch prefix, and a required
 // comment — never a second, looser event shape for this path. Notifies
 // both the bypassed manager and the timesheet owner.
@@ -554,10 +561,11 @@ export async function overrideApproveCore(me: SessionUser, formData: FormData): 
     if (!rate) throw new Error("No rate is in force for this person as of their week ending.");
 
     const batch = `OV-${Date.now().toString(36).toUpperCase()}`;
+    const payRun = payRunRef(payRunForApproval(row.weekEnding, fromUTCDate(new Date())));
     await client.query("insert into events (timesheet_id, type, actor_id, payload) values ($1, 'approved', $2, $3)", [
       row.id,
       me.id,
-      JSON.stringify({ hourly: rate.hourly, rateEffectiveFrom: rate.effectiveFrom, contractRef: rate.contractRef, override: true, batch, comment }),
+      JSON.stringify({ hourly: rate.hourly, rateEffectiveFrom: rate.effectiveFrom, contractRef: rate.contractRef, payRun, override: true, batch, comment }),
     ]);
     await client.query("insert into notifications (user_id, text, target) values ($1, $2, $3)", [
       row.userId,

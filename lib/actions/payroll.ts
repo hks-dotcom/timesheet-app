@@ -19,7 +19,7 @@ import { ACCOUNTS, resolveExpenseAccount } from "../accounts";
 import { getPool } from "../db";
 import { revalidateAfterCommit } from "../revalidate";
 import { roundMoney } from "../format";
-import { getPayRunForWeekEnding } from "../paycalendar";
+import { heldPayRun, type PayRunRef } from "../payrun";
 import type { SessionUser } from "../repo";
 import { assertRole } from "./guard";
 import { statusFromLatestEventType } from "../status";
@@ -37,7 +37,9 @@ export const ACCOUNT_REASON_MIN = 5;
 // transaction — if any isn't, the whole batch fails and nothing changes.
 // The amount comes only from the submitted event's hours and the approved
 // event's rate, both already snapshotted — the live rates table is never
-// read here.
+// read here. The pay run is COPIED from the approved event, where it was
+// decided at approval; the date an admin happens to process on never
+// moves a week into a different run.
 export async function markProcessedBatchCore(me: SessionUser, formData: FormData): Promise<ProcessState> {
   const denied = assertRole(me, ["admin"]);
   if (denied) return { error: denied };
@@ -123,7 +125,7 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
 
     for (const row of rows) {
       const snapshots = await getSnapshots(client, row.id);
-      const payRun = getPayRunForWeekEnding(row.weekEnding);
+      const payRun = snapshots.payRun;
       const amount = roundMoney(snapshots.totalHours * snapshots.hourly);
       const account = accountByTimesheetId.get(row.id)!;
 
@@ -166,26 +168,36 @@ export async function markProcessedBatchCore(me: SessionUser, formData: FormData
   return { ok: true, batch: committedBatch };
 }
 
-// The two snapshots a processed event's amount is built from: the hours on
-// the timesheet's latest submitted event, and the rate on its latest
-// approved event. Never the live rates table.
+// The snapshots a processed event is built from: the hours on the
+// timesheet's latest submitted event, and the rate and pay run on its
+// latest approved event. Never the live rates table, never the calendar.
 async function getSnapshots(
   client: PoolClient,
   timesheetId: number,
-): Promise<{ userId: number; totalHours: number; hourly: number }> {
-  const result = await client.query<{ user_id: string; total_hours: string; hourly: string }>(
+): Promise<{ userId: number; totalHours: number; hourly: number; payRun: PayRunRef }> {
+  const result = await client.query<{
+    user_id: string;
+    week_ending: string;
+    total_hours: string;
+    approved: { hourly: number; payRun?: PayRunRef } | null;
+    approved_at: string | null;
+  }>(
     `
-      select t.user_id,
+      select t.user_id, t.week_ending::text as week_ending,
         (select (payload->>'totalHours')::numeric from events where timesheet_id = t.id and type = 'submitted' order by at desc, id desc limit 1) as total_hours,
-        (select (payload->>'hourly')::numeric from events where timesheet_id = t.id and type = 'approved' order by at desc, id desc limit 1) as hourly
+        appr.payload as approved, appr.at::text as approved_at
       from timesheets t
+      left join lateral (
+        select payload, at from events where timesheet_id = t.id and type = 'approved' order by at desc, id desc limit 1
+      ) appr on true
       where t.id = $1
     `,
     [timesheetId],
   );
   const row = result.rows[0];
-  if (!row || row.total_hours === null || row.hourly === null) {
+  const payRun = row ? heldPayRun(row.approved, row.approved_at, row.week_ending) : null;
+  if (!row || row.total_hours === null || !row.approved || row.approved.hourly == null || !payRun) {
     throw new Error("Missing a submitted or approved snapshot for one of these timesheets.");
   }
-  return { userId: Number(row.user_id), totalHours: Number(row.total_hours), hourly: Number(row.hourly) };
+  return { userId: Number(row.user_id), totalHours: Number(row.total_hours), hourly: Number(row.approved.hourly), payRun };
 }

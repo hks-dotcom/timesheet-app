@@ -472,6 +472,11 @@ export interface ApprovedPayload {
   hourly: number;
   rateEffectiveFrom: string;
   contractRef: string;
+  // The run this week is paid in, decided at approval by
+  // lib/paycalendar.ts's payRunForApproval and never recomputed. Absent
+  // only on approvals recorded before it was snapshotted — lib/payrun.ts's
+  // heldPayRun applies the same rule to the event's own date for those.
+  payRun?: { payday: string; due: string; cutoff: string };
   override?: boolean;
   batch?: string;
   comment?: string; // required when override is true
@@ -489,8 +494,9 @@ export interface ProcessedPayload {
   resolvedAccount: string; // what the resolver rule would have said, snapshotted for audit
   resolverInputs: ResolverInputs; // the inputs the resolver was actually run against, frozen — a later
   // function/stream change can never make this row look wrong in hindsight
-  payRun: { payday: string; due: string; cutoff: string };
+  payRun: { payday: string; due: string; cutoff: string }; // copied from the approved event, never recomputed
   amount: number;
+  batch?: string; // the Mark processed batch it went out in — the unit of the handoff file
 }
 
 export interface TimesheetSummary {
