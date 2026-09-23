@@ -184,9 +184,3 @@ export function getMostRecentPastPayRun(today: string): PayRun {
   if (!best) throw new Error("no past pay run found");
   return best;
 }
-
-// Transitional: only the seed builder and verify-payroll still call this,
-// and both are rewritten to the approval rule in later commits, which
-// delete it. No screen, export or action uses it.
-/** @deprecated the week's calendar slot, not the run it is paid in */
-export const getPayRunForWeekEnding = calendarSlotForWeek;

@@ -7,12 +7,16 @@
 // `npm run db:seed -- --dry-run` builds the same data in memory and prints
 // a summary WITHOUT connecting to any database (no env vars needed).
 //
+// `npm run db:seed -- --check-only` writes nothing: it runs the same
+// verification queries against whatever the database holds right now.
+//
 // The actual DB write (db/seedWrite.ts's writeSeed) is shared with the
 // running app's demo-reset and staleness-reseed paths (lib/demo.ts) — this
 // script calls the SAME function, not a copy, and layers verification and
 // the trigger proof on top, which those app paths skip.
 
 import { Pool, type PoolClient } from "@neondatabase/serverless";
+import { calendarSlotForWeek } from "../lib/paycalendar";
 import { STATUSES, statusFromLatestEventType } from "../lib/status";
 import { buildSeed, summarize } from "./seedData";
 import { writeSeed } from "./seedWrite";
@@ -245,6 +249,32 @@ async function runVerifications(client: PoolClient) {
         )
       `,
     },
+    {
+      // Nothing the seed writes may be dated after the moment it ran —
+      // not an event, a notification (sent or read), a chase or an admin
+      // log line. buildSeed also refuses to return such data; this checks
+      // what actually landed.
+      name: "rows dated in the future (events, notifications, chases, admin_log)",
+      sql: `
+        select (
+          (select count(*) from events where at > now()) +
+          (select count(*) from notifications where at > now() or read_at > now()) +
+          (select count(*) from chases where at > now()) +
+          (select count(*) from admin_log where at > now())
+        )::bigint as count
+      `,
+    },
+    {
+      // The pay run is decided at approval and held on the approved event.
+      name: "approved events that do not hold a pay run",
+      sql: "select count(*) from events where type = 'approved' and (payload->'payRun'->>'payday') is null",
+    },
+    {
+      // A processed event belongs to the Mark processed batch whose
+      // handoff file carried it.
+      name: "processed events with no batch reference",
+      sql: "select count(*) from events where type = 'processed' and coalesce(btrim(payload->>'batch'), '') = ''",
+    },
   ];
 
   for (const check of checks) {
@@ -252,6 +282,36 @@ async function runVerifications(client: PoolClient) {
     const count = result.rows[0].count;
     console.log(`  [${count === "0" ? "PASS" : "FAIL"}] ${check.name}: ${count}`);
   }
+
+  // The week's own cutoff comes from the pay calendar's rule
+  // (lib/paycalendar.ts), not a second copy of it in SQL, so this one is
+  // checked here in code.
+  const late = await lateSubmissionsWithoutFlag(client);
+  console.log(`  [${late.count === 0 ? "PASS" : "FAIL"}] submissions after their week's cutoff with no late flag and reason: ${late.count}`);
+  for (const ex of late.examples) console.log(`      ${ex}`);
+}
+
+// Every submitted event (first submissions and resubmissions alike) dated
+// after its week's own cutoff must say it is late and why — exactly what
+// submitCore demands of a live one.
+async function lateSubmissionsWithoutFlag(client: PoolClient): Promise<{ count: number; examples: string[] }> {
+  const result = await client.query<{ timesheet_id: string; name: string; week_ending: string; submitted_on: string; late: boolean | null; reason: string | null }>(`
+    select e.timesheet_id, u.name, t.week_ending::text as week_ending,
+      to_char(e.at at time zone 'UTC', 'YYYY-MM-DD') as submitted_on,
+      (e.payload->>'late')::boolean as late, e.payload->>'reason' as reason
+    from events e join timesheets t on t.id = e.timesheet_id join users u on u.id = t.user_id
+    where e.type = 'submitted'
+  `);
+  let count = 0;
+  const examples: string[] = [];
+  for (const r of result.rows) {
+    const cutoff = calendarSlotForWeek(r.week_ending).cutoff;
+    if (r.submitted_on > cutoff && !(r.late === true && (r.reason ?? "").trim().length >= 5)) {
+      count++;
+      if (examples.length < 3) examples.push(`${r.name} w/e ${r.week_ending}: submitted ${r.submitted_on}, cutoff ${cutoff}, late=${r.late ?? "unset"}`);
+    }
+  }
+  return { count, examples };
 }
 
 // Unlike the checks above, this one must be NON-zero: every status the app
@@ -301,6 +361,7 @@ async function proveAppendOnly(client: PoolClient) {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  const checkOnly = process.argv.includes("--check-only");
   const seed = buildSeed(new Date());
 
   if (dryRun) {
@@ -315,6 +376,18 @@ async function main() {
 
   const pool = new Pool({ connectionString });
   const client = await pool.connect();
+  if (checkOnly) {
+    try {
+      console.log("Checking the database as it stands (nothing written)...");
+      await printRowCounts(client);
+      await runVerifications(client);
+      await runStatusCoverageCheck(client);
+    } finally {
+      client.release();
+      await pool.end();
+    }
+    return;
+  }
   try {
     console.log("Seeding database...");
     await writeSeed(client, seed);

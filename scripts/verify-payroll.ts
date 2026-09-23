@@ -13,7 +13,7 @@
 import { resolveExpenseAccount } from "../lib/accounts";
 import { getPool } from "../lib/db";
 import { roundMoney } from "../lib/format";
-import { getPayRunForWeekEnding } from "../lib/paycalendar";
+import { payRunForApproval } from "../lib/paycalendar";
 import { getSodFlags } from "../lib/repo";
 
 interface CheckResult {
@@ -125,27 +125,61 @@ async function checkResolvedAccounts(): Promise<CheckResult> {
   };
 }
 
-// Every processed event's pay run must match lib/paycalendar.ts's
-// getPayRunForWeekEnding for that timesheet's week ending.
+// A week's pay run is decided once, at approval: the first run whose due
+// date is on or after the day it was approved (never earlier than its
+// own calendar slot) — lib/paycalendar.ts's payRunForApproval. Every
+// processed event's payload run must equal that rule applied to the
+// APPROVAL date of the approval it was processed from, and must be the
+// same run the approved event itself holds (processing copies it; it
+// never recomputes). Weeks still waiting are checked too: an approved
+// event's held run must be the rule applied to its own date. The
+// approval date is the event's own UTC date, as recorded.
 async function checkPayRuns(): Promise<CheckResult> {
   const pool = getPool();
-  const result = await pool.query<{ id: string; week_ending: string; payday: string | null }>(`
+  const result = await pool.query<{
+    id: string;
+    week_ending: string;
+    approved_on: string | null;
+    held_payday: string | null;
+    processed_payday: string | null;
+    has_processed: boolean;
+  }>(`
     select t.id, t.week_ending::text as week_ending,
-      (select payload->'payRun'->>'payday' from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1) as payday
+      to_char(appr.at at time zone 'UTC', 'YYYY-MM-DD') as approved_on,
+      appr.payload->'payRun'->>'payday' as held_payday,
+      proc.payload->'payRun'->>'payday' as processed_payday,
+      proc.payload is not null as has_processed
     from timesheets t
-    where exists (select 1 from events e where e.timesheet_id = t.id and e.type = 'processed')
+    join lateral (
+      select at, payload from events where timesheet_id = t.id and type = 'approved' order by at desc, id desc limit 1
+    ) appr on true
+    left join lateral (
+      select payload from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1
+    ) proc on true
+    where (select type from events where timesheet_id = t.id order by at desc, id desc limit 1) in ('approved', 'processed')
   `);
 
   let failures = 0;
+  const examples: string[] = [];
   for (const row of result.rows) {
-    if (row.payday === null) {
+    const expected = row.approved_on === null ? null : payRunForApproval(row.week_ending, row.approved_on).payday;
+    const problems: string[] = [];
+    if (expected === null) problems.push("no approval date");
+    if (row.held_payday !== expected) problems.push(`approval holds ${row.held_payday ?? "no run"}`);
+    if (row.has_processed && row.processed_payday !== expected) problems.push(`processed into ${row.processed_payday ?? "no run"}`);
+    if (problems.length > 0) {
       failures++;
-      continue;
+      if (examples.length < 3) {
+        examples.push(`timesheet ${row.id} w/e ${row.week_ending} approved ${row.approved_on} -> rule says ${expected}, ${problems.join(", ")}`);
+      }
     }
-    const expected = getPayRunForWeekEnding(row.week_ending).payday;
-    if (expected !== row.payday) failures++;
   }
-  return { name: "processed pay run matches getPayRunForWeekEnding(week_ending)", failures, total: result.rows.length };
+  return {
+    name: "approved and processed pay run equals payRunForApproval(week_ending, approval date), and processing copied it",
+    failures,
+    total: result.rows.length,
+    detail: examples.join("\n      "),
+  };
 }
 
 // Not a pass/fail check — a flag here is expected, not a bug, whenever the
@@ -177,6 +211,7 @@ async function main() {
   console.log("Payroll verification (each failure count must be 0):");
   for (const c of checks) {
     console.log(`  [${c.failures === 0 ? "PASS" : "FAIL"}] ${c.name}: ${c.failures}/${c.total}`);
+    if (c.failures > 0 && c.detail) console.log(`      ${c.detail}`);
   }
 
   await reportSodFlags();
