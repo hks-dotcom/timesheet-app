@@ -52,8 +52,9 @@ export default async function ProcessedPage({ searchParams }: { searchParams: Pr
           <div>
             <h2>Mark processed</h2>
             <p>
-              This records that the pay run has already happened in the payroll system — it does not pay anyone. One entity at a
-              time, so what leaves here is a journal for one set of books. Each week carries the pay run its own cutoff put it in.
+              Confirming a batch marks these approved weeks processed and produces the payroll handoff file for them: this
+              entity&apos;s gross pay, coded to expense accounts, so payroll can key the run. It does not pay anyone, and the payroll
+              system still produces the journal. Each week pays in the run it was given when it was approved.
             </p>
           </div>
         </div>

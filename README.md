@@ -11,8 +11,8 @@ synthetic data.
 The gate is a demo role picker, not a sign-in — pick any role and look around.
 All data is seeded and fictional, and the demo resets.
 
-Three guided entries on the gate walk through the point of it: *A raise
-doesn't rewrite history*, *One timesheet, every step*, and *Record a pay run*.
+Two guided entries on the gate walk through the point of it: *One timesheet,
+every step*, and *Record a pay run*.
 
 ## The two guarantees
 
@@ -63,7 +63,8 @@ attempting an UPDATE and a DELETE and showing both are refused.
 `scripts/verify-payroll.ts` re-checks the processed history independently: that
 every amount equals the two snapshots it was built from, that each row's
 resolved account matches the rule applied to the inputs frozen at the time, and
-that each pay run matches the pay calendar. The unit tests cover the pay
+that each week's pay run is the one its approval date decides — held on the
+approval and copied, never recomputed, when it is processed. The unit tests cover the pay
 calendar, the domain rules, money rounding and the expense-account resolver.
 
 ```bash
