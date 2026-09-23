@@ -365,6 +365,28 @@ export function sanitizeHours(raw: Record<string, unknown>, max: number): Hours 
   return out;
 }
 
+// The hours a week's form opens with. Display only — the server takes
+// whatever the form posts and re-checks all of it on save and submit.
+//
+// A week that can still be edited (draft: never filed, returned, or
+// reopened) opens with the draft the person last saved; failing that,
+// with the hours as last submitted, so a returned week is corrected
+// rather than re-entered; failing that, empty. A week past draft shows
+// what was submitted.
+//
+// A saved draft always wins over the submitted event because draft_hours
+// is only ever written by upsertDraft — on "Save draft", and inside the
+// same transaction as every submitted event the app writes — so when it
+// is set it is never older than the latest submission. The seed leaves
+// it null, which is exactly the returned week that used to open empty.
+export function formStartingHours(editable: boolean, draftHours: Hours | null, lastSubmittedHours: Hours | null): Hours {
+  const source = editable ? (draftHours ?? lastSubmittedHours) : lastSubmittedHours;
+  const out = { ...ZERO_HOURS };
+  if (!source) return out;
+  for (const k of DAY_KEYS) out[k] = Number(source[k]) || 0;
+  return out;
+}
+
 export function describeViolation(v: CapViolation): string {
   const dayName = (d: DayKey) => ({ mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday" })[d];
   switch (v.kind) {

@@ -3,7 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
 import { TimesheetForm } from "@/components/TimesheetForm";
 import { fromUTCDate, mostRecentFriday } from "@/lib/dateutil";
-import { blockedDaysFromRows, latestCapTerm, latestContractTerm, offerableWeeks, weekdayDates, windowOf, ZERO_HOURS } from "@/lib/domain";
+import { blockedDaysFromRows, formStartingHours, latestCapTerm, latestContractTerm, offerableWeeks, weekdayDates, windowOf } from "@/lib/domain";
 import { formatDateLong, formatDateShort } from "@/lib/format";
 import {
   getActiveCustomersForEntity,
@@ -90,7 +90,9 @@ export default async function NewTimesheetPage({
   const [holidays, timeOff] = await Promise.all([getHolidaysByDate(dateList), getTimeOffByDate(me.id, dateList)]);
   const blocked = blockedDaysFromRows(targetWeek, holidays, timeOff);
 
-  const initialHours = ts ? (ts.status === "draft" ? (ts.draftHours ?? ZERO_HOURS) : (ts.submitted?.hours ?? ZERO_HOURS)) : ZERO_HOURS;
+  // A returned week opens with its hours as last submitted unless a
+  // draft has been saved on top of the return (lib/domain.ts).
+  const initialHours = formStartingHours(editable, ts?.draftHours ?? null, ts?.submitted?.hours ?? null);
   const initialStreamId = ts?.streamId ?? streams[0]?.id ?? 0;
   const initialCustomerId = ts?.customerId ?? null;
   const initialNotes = ts?.notes ?? "";

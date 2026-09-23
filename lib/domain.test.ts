@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   contributorActionNeededCount,
+  formStartingHours,
   latestContractTerm,
   recentWeekEndings,
   returnHistoryBefore,
@@ -274,4 +275,36 @@ test("returnHistoryBefore: first submission's date, and the return only while it
   assert.deepEqual(returnHistoryBefore(events, "2026-09-19T00:00:00.000Z"), { firstSubmittedOn: "2026-09-11", returnedOn: null });
   // Before anything was filed.
   assert.deepEqual(returnHistoryBefore(events, "2026-09-10T00:00:00.000Z"), { firstSubmittedOn: null, returnedOn: null });
+});
+
+// formStartingHours: the hours a week's form opens with.
+const SUBMITTED = { mon: 0, tue: 7.5, wed: 5.5, thu: 6.25, fri: 7.75 };
+const REDRAFTED = { mon: 0, tue: 7.5, wed: 6, thu: 6.25, fri: 7.75 };
+
+test("formStartingHours: a returned week with no draft saved since opens with the hours as last submitted", () => {
+  assert.deepEqual(formStartingHours(true, null, SUBMITTED), SUBMITTED);
+});
+
+test("formStartingHours: a draft saved on top of a return wins over the submitted event", () => {
+  assert.deepEqual(formStartingHours(true, REDRAFTED, SUBMITTED), REDRAFTED);
+});
+
+test("formStartingHours: a saved all-zero draft still wins — clearing the week is the person's choice", () => {
+  assert.deepEqual(formStartingHours(true, { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0 }, SUBMITTED), { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0 });
+});
+
+test("formStartingHours: a week never filed and never saved opens empty", () => {
+  assert.deepEqual(formStartingHours(true, null, null), { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0 });
+});
+
+test("formStartingHours: a week past draft shows what was submitted, never a stale draft", () => {
+  assert.deepEqual(formStartingHours(false, REDRAFTED, SUBMITTED), SUBMITTED);
+  assert.deepEqual(formStartingHours(false, REDRAFTED, null), { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0 });
+});
+
+test("formStartingHours: returns a fresh object, every day present", () => {
+  const out = formStartingHours(true, null, { tue: 4 } as unknown as typeof SUBMITTED);
+  assert.deepEqual(out, { mon: 0, tue: 4, wed: 0, thu: 0, fri: 0 });
+  out.tue = 9;
+  assert.equal(formStartingHours(true, null, null).tue, 0);
 });
