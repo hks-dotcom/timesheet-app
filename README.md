@@ -1,6 +1,8 @@
 # Timesheet to payroll
 
-Timesheet-to-payroll workflow — hours entered once, approved in one place, handed to payroll already coded to the ledger. Rates snapshotted at approval; an append-only event log.
+A timesheet-to-payroll workflow: hours entered once, approved in one place, and
+handed to payroll already coded to the ledger. A clean-room rebuild, on
+synthetic data.
 
 ## Live demo
 
