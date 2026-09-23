@@ -16,7 +16,7 @@
 // the trigger proof on top, which those app paths skip.
 
 import { Pool, type PoolClient } from "@neondatabase/serverless";
-import { calendarSlotForWeek } from "../lib/paycalendar";
+import { calendarSlotForWeek, isPayrollBusinessDay } from "../lib/paycalendar";
 import { STATUSES, statusFromLatestEventType } from "../lib/status";
 import { buildSeed, summarize } from "./seedData";
 import { writeSeed } from "./seedWrite";
@@ -289,6 +289,58 @@ async function runVerifications(client: PoolClient) {
   const late = await lateSubmissionsWithoutFlag(client);
   console.log(`  [${late.count === 0 ? "PASS" : "FAIL"}] submissions after their week's cutoff with no late flag and reason: ${late.count}`);
   for (const ex of late.examples) console.log(`      ${ex}`);
+
+  const handoffs = handoffsOffCalendar(await client.query(PROCESSED_HANDOFFS_SQL).then((r) => r.rows));
+  console.log(
+    `  [${handoffs.count === 0 ? "PASS" : "FAIL"}] processed events dated on or after their run's due date (so also its payday), or on a weekend or holiday: ${handoffs.count}` +
+      ` (on/after payday ${handoffs.onOrAfterPayday}, on/after due ${handoffs.onOrAfterDue}, not a working day ${handoffs.notWorkingDay})`,
+  );
+  for (const ex of handoffs.examples) console.log(`      ${ex}`);
+}
+
+// Confirming a batch produces the file payroll keys the run from, so a
+// processed event is a handoff that happens BEFORE its run: never on or
+// after the payday it carries, and never on a day the pay calendar says
+// nobody works (a weekend or a federal holiday — lib/paycalendar.ts's own
+// definition, not a copy of it here).
+// The handoff is due before approval closes too: payroll needs the file
+// before the due date to key the run, so on or after the due date is
+// already too late, not just on or after payday.
+const PROCESSED_HANDOFFS_SQL = `
+  select e.payload->>'batch' as batch, to_char(e.at at time zone 'UTC', 'YYYY-MM-DD') as processed_on,
+    e.payload->'payRun'->>'payday' as payday, e.payload->'payRun'->>'due' as due
+  from events e where e.type = 'processed'
+`;
+
+function handoffsOffCalendar(rows: { batch: string | null; processed_on: string; payday: string | null; due: string | null }[]) {
+  let count = 0;
+  let onOrAfterPayday = 0;
+  let onOrAfterDue = 0;
+  let notWorkingDay = 0;
+  const examples: string[] = [];
+  const seen = new Set<string | null>();
+  for (const r of rows) {
+    const problems: string[] = [];
+    if (r.payday === null || r.processed_on >= r.payday) {
+      onOrAfterPayday++;
+      problems.push(`on or after payday ${r.payday}`);
+    }
+    if (r.due === null || r.processed_on >= r.due) {
+      onOrAfterDue++;
+      problems.push(`on or after due ${r.due}`);
+    }
+    if (!isPayrollBusinessDay(r.processed_on)) {
+      notWorkingDay++;
+      problems.push("not a working day");
+    }
+    if (problems.length === 0) continue;
+    count++;
+    if (!seen.has(r.batch) && examples.length < 4) {
+      seen.add(r.batch);
+      examples.push(`batch ${r.batch}: processed ${r.processed_on}, ${problems.join(", ")}`);
+    }
+  }
+  return { count, onOrAfterPayday, onOrAfterDue, notWorkingDay, examples };
 }
 
 // Every submitted event (first submissions and resubmissions alike) dated
