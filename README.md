@@ -33,23 +33,29 @@ for that timesheet, never stored. A rate correction is a new row that
 supersedes the old one; an approval that was overridden still says so; a week
 that was returned still carries the note it came back with.
 
-## What it does not do
+## What it hands to payroll
 
-It sits **upstream of payroll**. It produces gross pay — hours times the rate
-held at approval — and how that cost is coded to expense accounts. Taxes,
-withholdings, employer contributions, net pay and the payroll journal all come
-from the payroll system. Nothing here is a journal and nothing posts to a
-liability account.
+Confirming a batch on Mark processed marks those weeks processed and
+produces the payroll handoff file for exactly them: gross pay for each
+hourly person — hours times the rate held at approval — with the
+contract reference behind the rate and the expense account the cost
+belongs to. Payroll keys the run from it; taxes, withholdings and the
+journal entry are theirs. Every completed handoff stays in the Batches
+list, each dated the last working day before its run's deadline, so any
+run can be reopened later.
 
 ![Mark processed: confirming a batch marks those weeks processed and
 produces the payroll handoff file for exactly them. Each completed
 handoff stays in the Batches list.](docs/timesheet-mark-processed.png)
 
-Authentication is a demo role picker, not sign-in. Authorization is real and is
-enforced server-side at every layer — pages, route handlers and server actions
-each check for themselves, and reads are scoped by role and entity in SQL
-rather than by hiding links. See [docs/access.md](docs/access.md) for the
-route-by-role and action-by-role tables and where each rule lives.
+## Sign-in and permissions
+
+Authentication is a demo role picker, not a sign-in: pick any role and
+you're in. Authorization is real. Pages, route handlers and server
+actions each check the caller's role for themselves, and every read is
+scoped by role and entity in SQL rather than by hiding links. See
+[docs/access.md](docs/access.md) for the route-by-role and
+action-by-role tables and where each rule lives.
 
 ## How it is checked
 
