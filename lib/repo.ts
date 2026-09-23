@@ -97,20 +97,31 @@ export async function getUserById(id: number): Promise<SessionUser | null> {
   return row ? normalizeUser(row) : null;
 }
 
-// The gate's lookup: the first active user in this entity with this role.
-// If none is found for 'intern', falls back to 'consultant' (the mock's
-// rule — not every entity necessarily has an intern seeded).
+// The gate's lookup: the first active user in this entity with this role,
+// or null. No fallback to another role: a role with no active user in the
+// entity is not offered by the gate (listGateRoles below), and a request
+// that asks for one anyway is refused rather than handed someone else.
 export async function findGateUser(entityId: number, role: Role): Promise<SessionUser | null> {
   const pool = getPool();
-  const roles = role === "intern" ? ["intern", "consultant"] : [role];
-  for (const r of roles) {
-    const result = await pool.query(
-      `${USER_SELECT} where u.entity_id = $1 and u.role = $2 and u.active = true order by u.id limit 1`,
-      [entityId, r],
-    );
-    if (result.rows[0]) return normalizeUser(result.rows[0]);
-  }
-  return null;
+  const result = await pool.query(
+    `${USER_SELECT} where u.entity_id = $1 and u.role = $2 and u.active = true order by u.id limit 1`,
+    [entityId, role],
+  );
+  return result.rows[0] ? normalizeUser(result.rows[0]) : null;
+}
+
+// The roles the gate may offer, per entity: every role held by at least
+// one active user there, read from the data on each request. Same
+// predicate as findGateUser (entity, role, active), so every role offered
+// resolves to a person and no role that resolves is left out.
+export async function listGateRoles(): Promise<Record<number, Role[]>> {
+  const pool = getPool();
+  const result = await pool.query<{ entity_id: string; role: Role }>(
+    "select distinct entity_id, role from users where active = true",
+  );
+  const out: Record<number, Role[]> = {};
+  for (const r of result.rows) (out[Number(r.entity_id)] ??= []).push(r.role);
+  return out;
 }
 
 function normalizeUser(row: Record<string, unknown>): SessionUser {

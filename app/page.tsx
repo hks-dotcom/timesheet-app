@@ -1,7 +1,7 @@
 import { GateForm } from "@/components/GateForm";
 import { ResetDemoControl } from "@/components/ResetDemoControl";
 import { ensureFreshDemoData } from "@/lib/demo";
-import { listEntities } from "@/lib/repo";
+import { listEntities, listGateRoles } from "@/lib/repo";
 
 // The gate: no sign-in, pick a role and an entity. Reads live data on
 // every request — nothing here is statically prerendered.
@@ -9,7 +9,9 @@ export const dynamic = "force-dynamic";
 
 export default async function GatePage() {
   await ensureFreshDemoData();
-  const entities = await listEntities();
+  // The roles each entity can offer come from its active users as they
+  // stand now, never a fixed list per entity.
+  const [entities, rolesByEntity] = await Promise.all([listEntities(), listGateRoles()]);
 
   return (
     <div className="gate">
@@ -20,7 +22,7 @@ export default async function GatePage() {
           <b>Demo</b> seeded data, no sign-in
         </div>
 
-        <GateForm entities={entities} />
+        <GateForm entities={entities} rolesByEntity={rolesByEntity} />
 
         <div style={{ textAlign: "center", marginTop: 10 }}>
           <ResetDemoControl />
