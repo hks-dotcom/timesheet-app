@@ -94,10 +94,11 @@ function check(seed: SeedResult, now: Date) {
     if (status === "submitted") bump(t.entityId, "submitted");
     if (last.type === "returned") {
       bump(t.entityId, "returned");
-      // CoreThread's returned week (Bob Ellis's) is always inside its
-      // return window today: resubmitting it needs no reason.
+      // CoreThread's returned week (Bob Ellis's) can always be resubmitted
+      // today with no reason: either still on or before its own cutoff, or
+      // past it but inside its return window.
       const win = windowOf(t.weekEnding, todayISO, returnHistoryBefore(evs, now.toISOString()));
-      if (win.resubmission?.withinWindow && win.state === "open") bump(t.entityId, "returnedWithinWindow");
+      if (win.state === "open" && (todayISO <= win.slot.cutoff || win.resubmission?.withinWindow)) bump(t.entityId, "returnedWithinWindow");
     }
     if (last.type === "created") bump(t.entityId, "draft");
     if (processed && processed.payload.accountOverrideReason) bump(t.entityId, "accountOverride");
