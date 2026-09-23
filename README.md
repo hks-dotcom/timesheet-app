@@ -23,6 +23,9 @@ every later figure is read back from that snapshot rather than recomputed
 against today's rate. Reports can show you what recomputing *would* have
 claimed, side by side, so the difference is visible instead of silent.
 
+![Reports with the recompute toggle on: pay held at the rate
+captured at approval, beside what today's rate would claim.](docs/reports-recompute.png)
+
 **Nothing overwrites its own history.** Events are append-only, enforced by
 database triggers, and so are rates, contract terms, cap terms and the admin
 log. A timesheet has no status column: status is derived from the latest event
