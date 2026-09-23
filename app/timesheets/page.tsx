@@ -3,7 +3,9 @@ import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
 import { TimesheetLink } from "@/components/TimesheetLink";
 import { timesheetHref } from "@/lib/timesheetHref";
+import { fromUTCDate } from "@/lib/dateutil";
 import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
+import { payRunView } from "@/lib/payrun";
 import { listTimesheetsForUser } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
 import { STATUSES, type Status } from "@/lib/status";
@@ -36,6 +38,7 @@ export default async function MyTimesheetsPage({
   const currentPage = Math.min(Math.max(1, Number(page) || 1), pageCount);
   const pageItems = list.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
 
+  const todayISO = fromUTCDate(new Date());
   const counts = Object.fromEntries(STATUSES.map((s) => [s, all.filter((t) => t.status === s).length])) as Record<Status, number>;
 
   return (
@@ -110,7 +113,9 @@ export default async function MyTimesheetsPage({
                         </td>
                         <td className="r num">{t.approved ? formatMoney(t.approved.hourly) : <span className="muted">&mdash;</span>}</td>
                         <td className="r num">{pay !== null ? formatMoney(pay) : <span className="muted">&mdash;</span>}</td>
-                        <td>{t.processed?.payRun.payday ?? <span className="muted">&mdash;</span>}</td>
+                        <td>
+                          <PayRunCell t={t} todayISO={todayISO} />
+                        </td>
                       </tr>
                     );
                   })
@@ -149,4 +154,12 @@ export default async function MyTimesheetsPage({
       </div>
     </AppShell>
   );
+}
+
+// Approved or processed: the run held on the approval, as a plain date.
+// Not approved yet: where it WOULD land if approved today, said as such —
+// a projection is never shown in the same voice as a fact.
+function PayRunCell({ t, todayISO }: { t: Parameters<typeof payRunView>[0]; todayISO: string }) {
+  const view = payRunView(t, todayISO);
+  return view.projected ? <span className="muted">would pay {view.run.payday}</span> : <>{view.run.payday}</>;
 }

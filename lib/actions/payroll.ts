@@ -185,7 +185,7 @@ async function getSnapshots(
     `
       select t.user_id, t.week_ending::text as week_ending,
         (select (payload->>'totalHours')::numeric from events where timesheet_id = t.id and type = 'submitted' order by at desc, id desc limit 1) as total_hours,
-        appr.payload as approved, appr.at::text as approved_at
+        appr.payload as approved, to_char(appr.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as approved_at
       from timesheets t
       left join lateral (
         select payload, at from events where timesheet_id = t.id and type = 'approved' order by at desc, id desc limit 1

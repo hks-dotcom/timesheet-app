@@ -4,7 +4,9 @@ import { AppShell } from "@/components/AppShell";
 import { StatusMark } from "@/components/StatusMark";
 import { accountName } from "@/lib/accounts";
 import { DAY_KEYS, weekdayDates } from "@/lib/domain";
+import { fromUTCDate } from "@/lib/dateutil";
 import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
+import { payRunView } from "@/lib/payrun";
 import { getBlockedDaysBulk, getTimesheetIfVisible } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
 
@@ -48,6 +50,10 @@ export default async function TimesheetPage({ params }: { params: Promise<{ id: 
   // Both snapshots, never a live rate; the processed event's own amount
   // wins once it exists.
   const pay = t.processed ? t.processed.amount : rateHeld === null ? null : roundMoney(totalHours * rateHeld);
+
+  // Held on the approval once approved; until then, a projection that
+  // says so.
+  const run = payRunView(t, fromUTCDate(new Date()));
 
   const backHref = t.userId === me.id ? "/timesheets" : me.role === "manager" ? "/queue" : "/reports";
 
@@ -162,10 +168,21 @@ export default async function TimesheetPage({ params }: { params: Promise<{ id: 
                     </>
                   )}
                 </dd>
-                <dt>Pay run</dt>
-                <dd>{formatDateLong(t.processed.payRun.payday)}</dd>
               </>
             )}
+            <dt>Pay run</dt>
+            <dd>
+              {run.projected ? (
+                <span className="muted">
+                  Would pay {formatDateLong(run.run.payday)} if approved today (by {formatDateLong(run.run.due)}). The run is fixed
+                  at approval.
+                </span>
+              ) : (
+                <>
+                  {formatDateLong(run.run.payday)} <span className="muted">&middot; fixed at approval</span>
+                </>
+              )}
+            </dd>
             {t.returnedReason && (
               <>
                 <dt>Returned</dt>

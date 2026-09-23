@@ -5,11 +5,14 @@
 // in. Pay is read from the submitted/approved snapshots (or, once
 // processed, the processed event's own amount), never recomputed from a
 // live rate — except in the recompute columns, which exist precisely to
-// contrast against that.
+// contrast against that. The pay run is the one held on the approved (or,
+// once processed, the processed) event, read through lib/payrun.ts —
+// never recomputed from the week ending, so a row cannot change runs
+// because the report was run on a later day.
 
 import { rateAsOf, type RateRow } from "./domain";
 import { roundMoney } from "./format";
-import { getPayRunForWeekEnding, type PayRun } from "./paycalendar";
+import { heldRunOf, type PayRunRef } from "./payrun";
 import type { TimesheetSummary } from "./repo";
 
 export type ReportStatusFilter = "processed" | "approved"; // 'approved' means approved-and-processed
@@ -34,7 +37,7 @@ export interface ReportRow {
   expenseAccount: string | null; // blank until processed — never a resolver default
   accountOverridden: boolean; // chosen account differs from the resolver's default, snapshotted on the processed event
   accountOverrideReason: string | null; // why, required at processing time whenever it differs
-  payRun: PayRun;
+  payRun: PayRunRef; // held at approval — every row here is approved or processed
   approvedByName: string | null;
   override: boolean; // approval override (approved by payroll instead of the manager)
   status: "approved" | "processed";
@@ -54,7 +57,8 @@ export function buildReportRows(
     if (t.status !== "approved" && t.status !== "processed") continue;
     if (filters.statusFilter === "processed" && t.status !== "processed") continue;
 
-    const payRun = getPayRunForWeekEnding(t.weekEnding);
+    const payRun = heldRunOf(t);
+    if (!payRun) continue;
     if (payRun.payday < filters.fromPayday || payRun.payday > filters.toPayday) continue;
 
     const hours = t.submitted?.totalHours ?? 0;

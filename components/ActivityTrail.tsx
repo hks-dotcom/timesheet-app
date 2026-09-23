@@ -44,9 +44,12 @@ function EventDetail({ event }: { event: TrailEvent }) {
 
   if (event.type === "approved") {
     const rate = Number(p.hourly ?? 0);
+    // The run is decided here, at approval, and shown where it was decided.
+    const run = p.payRun as { payday?: string } | undefined;
     return (
       <div className="ev-p">
         Rate held at {formatMoney(rate)}/h
+        {run?.payday ? <> &middot; pays {run.payday}</> : null}
         {p.batch ? <> &middot; batch {String(p.batch)}</> : null}
         {p.override ? " · override" : ""}
       </div>
@@ -59,6 +62,7 @@ function EventDetail({ event }: { event: TrailEvent }) {
       <div className="ev-p">
         {String(p.expenseAccount ?? "")}
         {run?.payday ? <> &middot; pays {run.payday}</> : null}
+        {p.batch ? <> &middot; batch {String(p.batch)}</> : null}
       </div>
     );
   }

@@ -4,7 +4,7 @@
 // functions; where the two disagree the written rules in CLAUDE.md win.
 
 import { addDays } from "./dateutil";
-import { getPayRunForLateSubmission, getPayRunForWeekEnding, type PayRun } from "./paycalendar";
+import { calendarSlotForWeek, payRunForApproval, type PayRun } from "./paycalendar";
 
 export const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri"] as const;
 export type DayKey = (typeof DAY_KEYS)[number];
@@ -83,18 +83,23 @@ export interface SubmissionWindow {
   state: WindowState;
   open: string; // Monday of the week
   lock: string; // week ending + 14 days
-  run: PayRun; // the week's normal pay run (for "open"/"future"/"locked" messaging)
-  lateRun: PayRun | null; // set only when state === 'late': the run a submission today would land in
+  slot: PayRun; // the week's calendar slot: its cutoff decides on time vs late — NOT the run it is paid in
+  // Where the week WOULD be paid if it were approved today — a projection
+  // for the form's copy, never a fact. The real run is decided at approval
+  // (payRunForApproval) and snapshotted then; a later approval can land
+  // later. Always at least the slot.
+  projected: PayRun;
 }
 
 export function windowOf(weekEnding: string, todayISO: string): SubmissionWindow {
   const open = addDays(weekEnding, -4);
   const lock = addDays(weekEnding, 14);
-  const run = getPayRunForWeekEnding(weekEnding);
-  if (todayISO < open) return { state: "future", open, lock, run, lateRun: null };
-  if (todayISO <= run.cutoff) return { state: "open", open, lock, run, lateRun: null };
-  if (todayISO <= lock) return { state: "late", open, lock, run, lateRun: getPayRunForLateSubmission(todayISO) };
-  return { state: "locked", open, lock, run, lateRun: null };
+  const slot = calendarSlotForWeek(weekEnding);
+  const projected = payRunForApproval(weekEnding, todayISO);
+  if (todayISO < open) return { state: "future", open, lock, slot, projected };
+  if (todayISO <= slot.cutoff) return { state: "open", open, lock, slot, projected };
+  if (todayISO <= lock) return { state: "late", open, lock, slot, projected };
+  return { state: "locked", open, lock, slot, projected };
 }
 
 // The recent weeks a contributor might work with: this week and up to

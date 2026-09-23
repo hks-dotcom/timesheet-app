@@ -4,7 +4,8 @@ import { timesheetHref } from "@/lib/timesheetHref";
 import { Kpi } from "@/components/Kpi";
 import { addDays, fromUTCDate } from "@/lib/dateutil";
 import { formatDateLong, formatHours, formatMoney, roundMoney } from "@/lib/format";
-import { getPayRunForWeekEnding, getUpcomingPayRuns } from "@/lib/paycalendar";
+import { getUpcomingPayRuns } from "@/lib/paycalendar";
+import { heldRunOf } from "@/lib/payrun";
 import {
   countTimesheetsForEntity,
   getReadyForProcessing,
@@ -190,7 +191,8 @@ export async function AdminDashboard({ me }: { me: SessionUser }) {
                         <td>{t.streamName}</td>
                         <td className="r num">{formatHours(hours)}</td>
                         <td className="r num">{formatMoney(pay)}</td>
-                        <td>{getPayRunForWeekEnding(t.weekEnding).payday}</td>
+                        {/* Every row here is approved: the run held on its approval. */}
+                        <td>{heldRunOf(t)?.payday ?? "—"}</td>
                       </tr>
                     );
                   })}

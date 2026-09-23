@@ -2,7 +2,7 @@ import { AppShell } from "@/components/AppShell";
 import { MarkProcessed, type ReadyRow } from "@/components/MarkProcessed";
 import { resolveExpenseAccount } from "@/lib/accounts";
 import { roundMoney } from "@/lib/format";
-import { getPayRunForWeekEnding } from "@/lib/paycalendar";
+import { heldRunOf } from "@/lib/payrun";
 import { getReadyForProcessing } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
 
@@ -18,7 +18,9 @@ export default async function ProcessedPage({ searchParams }: { searchParams: Pr
   const rows: ReadyRow[] = ready.map((t) => {
     const hours = t.submitted?.totalHours ?? 0;
     const rate = t.approved?.hourly ?? 0;
-    const payRun = getPayRunForWeekEnding(t.weekEnding);
+    // The run held on the approved event — Mark processed copies it, so
+    // the label here is exactly what the processed event will say.
+    const payRun = heldRunOf(t);
     const defaultAccount = resolveExpenseAccount({ billable: t.billable, defaultAccount: t.streamDefaultAccount }, t.userFunction);
     return {
       id: t.id,
@@ -30,7 +32,7 @@ export default async function ProcessedPage({ searchParams }: { searchParams: Pr
       hours,
       rate,
       amount: roundMoney(hours * rate),
-      payRunLabel: `${payRun.payday} run`,
+      payRunLabel: payRun ? `${payRun.payday} run` : "—",
       defaultAccount,
       overrideApprovedById: t.approved?.override ? t.approvedById : null,
     };

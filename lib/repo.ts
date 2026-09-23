@@ -19,7 +19,7 @@ import {
   type Hours,
   type RateRow,
 } from "./domain";
-import { getPayRunForWeekEnding } from "./paycalendar";
+import { calendarSlotForWeek } from "./paycalendar";
 import type { Status } from "./status";
 import { statusFromLatestEventType } from "./status";
 
@@ -523,6 +523,7 @@ export interface TimesheetSummary {
   processed: ProcessedPayload | null;
   approvedById: number | null;
   approvedByName: string | null;
+  approvedAt: string | null; // when the latest approval was recorded
 }
 
 const TIMESHEET_SELECT = `
@@ -536,7 +537,7 @@ const TIMESHEET_SELECT = `
     sub.payload as "submittedPayload",
     appr.payload as "approvedPayload",
     proc.payload as "processedPayload",
-    apprby.id as "approvedById", apprby.name as "approvedByName"
+    apprby.id as "approvedById", apprby.name as "approvedByName", apprby.at as "approvedAt"
   from timesheets t
   join users u on u.id = t.user_id
   left join users mgr on mgr.id = u.manager_id
@@ -558,7 +559,7 @@ const TIMESHEET_SELECT = `
     select payload from events where timesheet_id = t.id and type = 'processed' order by at desc, id desc limit 1
   ) proc on true
   left join lateral (
-    select au.id, au.name from events ae join users au on au.id = ae.actor_id
+    select au.id, au.name, to_char(ae.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as at from events ae join users au on au.id = ae.actor_id
     where ae.timesheet_id = t.id and ae.type = 'approved' order by ae.at desc, ae.id desc limit 1
   ) apprby on true
 `;
@@ -590,6 +591,7 @@ function mapTimesheetRow(row: Record<string, unknown>): TimesheetSummary {
     processed: (row.processedPayload as ProcessedPayload | null) ?? null,
     approvedById: row.approvedById === null ? null : Number(row.approvedById),
     approvedByName: row.approvedByName === null ? null : String(row.approvedByName),
+    approvedAt: row.approvedAt === null || row.approvedAt === undefined ? null : String(row.approvedAt),
   };
 }
 
@@ -964,13 +966,14 @@ export interface TrackerManagerRow {
 
 // Every active manager in the entity, with how many of their direct
 // reports' submitted weeks are waiting on them, and how many are already
-// past that week's own pay-run due date.
+// past the approval due date of that week's own calendar slot — i.e.
+// approving it now can no longer get it into the run it was filed for.
 export async function getTrackerManagersForEntity(entityId: number, todayISO: string): Promise<TrackerManagerRow[]> {
   const managers = await getManagersForEntity(entityId);
   const rows: TrackerManagerRow[] = [];
   for (const m of managers) {
     const pending = await getPendingForManager(m.id);
-    const pastDue = pending.filter((t) => todayISO > getPayRunForWeekEnding(t.weekEnding).due).length;
+    const pastDue = pending.filter((t) => todayISO > calendarSlotForWeek(t.weekEnding).due).length;
     rows.push({ id: m.id, name: m.name, waiting: pending.length, pastDue });
   }
   return rows;

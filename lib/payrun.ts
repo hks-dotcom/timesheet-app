@@ -55,12 +55,20 @@ export interface PayRunSource {
   status: "draft" | "submitted" | "approved" | "processed";
 }
 
+/**
+ * The run an approved or processed week is held in: the processed
+ * event's copy once processed, otherwise the approved event's snapshot.
+ * null for a week that has not been approved — it has no run yet.
+ */
+export function heldRunOf(t: PayRunSource): PayRunRef | null {
+  if (t.status === "processed" && t.processed) return payRunRef(t.processed.payRun);
+  if (t.status === "approved" || t.status === "processed") return heldPayRun(t.approved, t.approvedAt, t.weekEnding);
+  return null;
+}
+
 export function payRunView(t: PayRunSource, todayISO: string): PayRunView {
-  if (t.status === "processed" && t.processed) return { run: payRunRef(t.processed.payRun), projected: false };
-  if (t.status === "approved" || t.status === "processed") {
-    const held = heldPayRun(t.approved, t.approvedAt, t.weekEnding);
-    if (held) return { run: held, projected: false };
-  }
+  const held = heldRunOf(t);
+  if (held) return { run: held, projected: false };
   return { run: payRunRef(payRunForApproval(t.weekEnding, todayISO)), projected: true };
 }
 

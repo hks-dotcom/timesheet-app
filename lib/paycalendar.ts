@@ -185,9 +185,8 @@ export function getMostRecentPastPayRun(today: string): PayRun {
   return best;
 }
 
-// Transitional names, removed in the next commit once every caller reads
-// the snapshotted run (or calendarSlotForWeek for the submission window).
+// Transitional: only the seed builder and verify-payroll still call this,
+// and both are rewritten to the approval rule in later commits, which
+// delete it. No screen, export or action uses it.
 /** @deprecated the week's calendar slot, not the run it is paid in */
 export const getPayRunForWeekEnding = calendarSlotForWeek;
-/** @deprecated */
-export const getPayRunForLateSubmission = (dateISO: string): PayRun => firstPayRunOnOrAfter("cutoff", dateISO);

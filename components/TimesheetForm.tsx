@@ -31,7 +31,10 @@ export interface TimesheetFormProps {
   returnedReason: string | null;
   windowState: "future" | "open" | "late" | "locked";
   lockDate: string;
-  lateRunPayday: string | null;
+  // Where the week would be paid if approved today (lib/domain.ts's
+  // windowOf) — a projection. The run is decided at approval.
+  projectedPayday: string;
+  projectedDue: string;
 }
 
 export function TimesheetForm(props: TimesheetFormProps) {
@@ -262,13 +265,18 @@ export function TimesheetForm(props: TimesheetFormProps) {
                 {customerId ? ` for ${props.customers.find((c) => c.id === customerId)?.name}` : ""}.
               </p>
               <p>
-                It goes to {props.managerName} for approval. The rate in force for this week is locked when they approve it.
+                It goes to {props.managerName} for approval. The rate in force for this week, and the pay run it goes into, are
+                both fixed when they approve it.
               </p>
-              {props.windowState === "late" && (
+              {props.windowState === "late" ? (
                 <div className="note bad">
-                  <b>Past the cutoff.</b> This week{props.lateRunPayday ? ` rolls into the run that pays ${props.lateRunPayday}` : ""}{" "}
-                  and is marked late.
+                  <b>Past the cutoff, so it is marked late.</b> If {props.managerName} approves it by {props.projectedDue}, it
+                  pays on {props.projectedPayday}. Approved after that, it goes into a later run.
                 </div>
+              ) : (
+                <p>
+                  Approved by {props.projectedDue}, it pays on {props.projectedPayday}.
+                </p>
               )}
             </div>
             <div className="modal-f">

@@ -91,7 +91,11 @@ export default async function NewTimesheetPage({
           <div>
             <h2>Where you stand</h2>
             <p>
-              The run paying {win.run.payday} is due {win.run.due}. Submission cutoff is {win.run.cutoff}.
+              {/* The cutoff is this week's own submission deadline; the run
+                  is only decided when it is approved, so it is stated as
+                  what WOULD happen if that were today. */}
+              Submission cutoff for this week is {win.slot.cutoff}. Approved by {win.projected.due}, it would pay{" "}
+              {win.projected.payday}; approved later, it pays in a later run.
             </p>
           </div>
         </div>
@@ -159,7 +163,8 @@ export default async function NewTimesheetPage({
         returnedReason={ts?.returnedReason ?? null}
         windowState={win.state}
         lockDate={win.lock}
-        lateRunPayday={win.lateRun?.payday ?? null}
+        projectedPayday={win.projected.payday}
+        projectedDue={win.projected.due}
       />
     </AppShell>
   );
