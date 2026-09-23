@@ -17,8 +17,6 @@ export function GateForm({ entities }: { entities: EntityRow[] }) {
   const [entityId, setEntityId] = useState(preset?.id);
   const [state, formAction, pending] = useActionState<EnterAppState, FormData>(enterAppAction, null);
 
-  const domain = entities.find((e) => e.id === entityId)?.domain ?? "";
-
   return (
     <form action={formAction}>
       {/* Two guided entries, one click each. Each submits the
@@ -64,10 +62,6 @@ export function GateForm({ entities }: { entities: EntityRow[] }) {
           {pending ? "Entering…" : "Enter the app"}
         </button>
       </div>
-
-      <p className="domain">
-        Accounts are issued on <b>@{domain}.com</b>. Contact your payroll admin if yours is not set up.
-      </p>
     </form>
   );
 }
