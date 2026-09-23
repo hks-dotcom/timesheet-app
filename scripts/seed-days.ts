@@ -8,8 +8,8 @@
 
 import { buildSeed, type SeedResult } from "../db/seedData";
 import { addDays, fromUTCDate } from "../lib/dateutil";
-import { windowOf } from "../lib/domain";
-import { businessDayBefore, calendarSlotForWeek, getUpcomingPayRuns, isPayrollBusinessDay } from "../lib/paycalendar";
+import { returnHistoryBefore, windowOf } from "../lib/domain";
+import { businessDayBefore, getUpcomingPayRuns, isPayrollBusinessDay } from "../lib/paycalendar";
 import { statusFromLatestEventType } from "../lib/status";
 
 const days = Number(process.argv[2] ?? 420);
@@ -55,14 +55,15 @@ function check(seed: SeedResult, now: Date) {
     for (let i = 1; i < evs.length; i++) {
       if (new Date(evs[i].at).getTime() <= new Date(evs[i - 1].at).getTime()) fail("events in order", `timesheet ${t.id}`);
     }
-    const slot = calendarSlotForWeek(t.weekEnding);
+    // Every submission judged by the rule submitCore applies, with the
+    // history as it stood just before it (a return restarts the clock).
     for (const e of evs.filter((x) => x.type === "submitted")) {
       submissionsChecked++;
-      const afterCutoff = e.at.slice(0, 10) > slot.cutoff;
-      const reason = String(e.payload.reason ?? "").trim();
-      if (afterCutoff && (e.payload.late !== true || reason.length < 5)) {
-        fail("no submission after its cutoff without a late flag and reason", `timesheet ${t.id} w/e ${t.weekEnding} submitted ${e.at}, cutoff ${slot.cutoff}`);
-      }
+      const win = windowOf(t.weekEnding, e.at.slice(0, 10), returnHistoryBefore(evs, e.at));
+      const flaggedLate = e.payload.late === true && String(e.payload.reason ?? "").trim().length >= 5;
+      if (win.state === "locked" || win.state === "future") fail("nothing submitted while locked or not yet open", `timesheet ${t.id}`);
+      if (win.state === "late" && !flaggedLate) fail("late submissions flagged with a reason", `timesheet ${t.id} w/e ${t.weekEnding} submitted ${e.at}`);
+      if (win.state === "open" && e.payload.late === true) fail("on-time submissions not flagged late", `timesheet ${t.id}`);
     }
     const last = evs[evs.length - 1];
     const status = statusFromLatestEventType(last.type);
@@ -91,7 +92,13 @@ function check(seed: SeedResult, now: Date) {
       bump(t.entityId, "ready");
     }
     if (status === "submitted") bump(t.entityId, "submitted");
-    if (last.type === "returned") bump(t.entityId, "returned");
+    if (last.type === "returned") {
+      bump(t.entityId, "returned");
+      // CoreThread's returned week (Bob Ellis's) is always inside its
+      // return window today: resubmitting it needs no reason.
+      const win = windowOf(t.weekEnding, todayISO, returnHistoryBefore(evs, now.toISOString()));
+      if (win.resubmission?.withinWindow && win.state === "open") bump(t.entityId, "returnedWithinWindow");
+    }
     if (last.type === "created") bump(t.entityId, "draft");
     if (processed && processed.payload.accountOverrideReason) bump(t.entityId, "accountOverride");
     if (processed && approved?.payload.override && approved.actorId === processed.actorId) bump(t.entityId, "sod");
@@ -123,6 +130,9 @@ function check(seed: SeedResult, now: Date) {
     if (endingSoon.length === 0) fail("every entity has a contract ending within 21 days", e.name);
   }
   if (!(perEntity.get(seed.entities.find((e) => e.name === "NexCore")!.id)?.sod)) fail("the SoD case exists", "NexCore");
+  if (!(perEntity.get(seed.entities.find((e) => e.name === "CoreThread")!.id)?.returnedWithinWindow)) {
+    fail("CoreThread's returned week is inside its return window, resubmittable with no reason", "CoreThread");
+  }
   // The two-raises person: three rate rows, the first 18+ months back, an approved week under it.
   const twoRaises = seed.users.filter((u) => {
     const r = seed.rates.filter((x) => x.userId === u.id);

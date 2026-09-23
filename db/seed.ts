@@ -16,7 +16,8 @@
 // the trigger proof on top, which those app paths skip.
 
 import { Pool, type PoolClient } from "@neondatabase/serverless";
-import { calendarSlotForWeek, isPayrollBusinessDay } from "../lib/paycalendar";
+import { returnHistoryBefore, windowOf } from "../lib/domain";
+import { isPayrollBusinessDay } from "../lib/paycalendar";
 import { STATUSES, statusFromLatestEventType } from "../lib/status";
 import { buildSeed, summarize } from "./seedData";
 import { writeSeed } from "./seedWrite";
@@ -283,11 +284,10 @@ async function runVerifications(client: PoolClient) {
     console.log(`  [${count === "0" ? "PASS" : "FAIL"}] ${check.name}: ${count}`);
   }
 
-  // The week's own cutoff comes from the pay calendar's rule
-  // (lib/paycalendar.ts), not a second copy of it in SQL, so this one is
-  // checked here in code.
-  const late = await lateSubmissionsWithoutFlag(client);
-  console.log(`  [${late.count === 0 ? "PASS" : "FAIL"}] submissions after their week's cutoff with no late flag and reason: ${late.count}`);
+  // The late rule lives in lib/domain.ts's windowOf (with the pay
+  // calendar's cutoffs), not in SQL, so this one is checked here in code.
+  const late = await submissionsAgainstLateRule(client);
+  console.log(`  [${late.count === 0 ? "PASS" : "FAIL"}] submissions whose late flag disagrees with the late rule (a return restarts the clock), or filed while locked: ${late.count}`);
   for (const ex of late.examples) console.log(`      ${ex}`);
 
   const handoffs = handoffsOffCalendar(await client.query(PROCESSED_HANDOFFS_SQL).then((r) => r.rows));
@@ -343,24 +343,45 @@ function handoffsOffCalendar(rows: { batch: string | null; processed_on: string;
   return { count, onOrAfterPayday, onOrAfterDue, notWorkingDay, examples };
 }
 
-// Every submitted event (first submissions and resubmissions alike) dated
-// after its week's own cutoff must say it is late and why — exactly what
-// submitCore demands of a live one.
-async function lateSubmissionsWithoutFlag(client: PoolClient): Promise<{ count: number; examples: string[] }> {
-  const result = await client.query<{ timesheet_id: string; name: string; week_ending: string; submitted_on: string; late: boolean | null; reason: string | null }>(`
-    select e.timesheet_id, u.name, t.week_ending::text as week_ending,
-      to_char(e.at at time zone 'UTC', 'YYYY-MM-DD') as submitted_on,
+// Every submitted event, first submissions and resubmissions alike, is
+// judged by the rule submitCore applies — lib/domain.ts's windowOf, with
+// the week's history as it stood just before that submission
+// (returnHistoryBefore) — never a second copy of the rule here:
+//   - where the rule says late, the event must be flagged late with a
+//     reason of at least 5 characters;
+//   - where it says on time, the event must not be flagged late (a week
+//     first filed on time and resubmitted within its return window is on
+//     time, even past its cutoff and past week ending + 14);
+//   - nothing may have been submitted while the rule says locked or not
+//     yet open.
+async function submissionsAgainstLateRule(client: PoolClient): Promise<{ count: number; examples: string[] }> {
+  const result = await client.query<{ timesheet_id: string; name: string; week_ending: string; id: string; type: string; at: string; late: boolean | null; reason: string | null }>(`
+    select e.timesheet_id, u.name, t.week_ending::text as week_ending, e.id, e.type,
+      to_char(e.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
       (e.payload->>'late')::boolean as late, e.payload->>'reason' as reason
     from events e join timesheets t on t.id = e.timesheet_id join users u on u.id = t.user_id
-    where e.type = 'submitted'
+    order by e.timesheet_id, e.at, e.id
   `);
+  const byTimesheet = new Map<string, typeof result.rows>();
+  for (const r of result.rows) (byTimesheet.get(r.timesheet_id) ?? byTimesheet.set(r.timesheet_id, []).get(r.timesheet_id)!).push(r);
   let count = 0;
   const examples: string[] = [];
-  for (const r of result.rows) {
-    const cutoff = calendarSlotForWeek(r.week_ending).cutoff;
-    if (r.submitted_on > cutoff && !(r.late === true && (r.reason ?? "").trim().length >= 5)) {
+  for (const rows of byTimesheet.values()) {
+    for (const r of rows) {
+      if (r.type !== "submitted") continue;
+      const win = windowOf(r.week_ending, r.at.slice(0, 10), returnHistoryBefore(rows, r.at));
+      const flaggedLate = r.late === true && (r.reason ?? "").trim().length >= 5;
+      const problem =
+        win.state === "locked" || win.state === "future"
+          ? `submitted while ${win.state}`
+          : win.state === "late" && !flaggedLate
+            ? `late (${win.lateBecause}) but not flagged with a reason`
+            : win.state === "open" && r.late === true
+              ? "flagged late but the rule says on time"
+              : null;
+      if (!problem) continue;
       count++;
-      if (examples.length < 3) examples.push(`${r.name} w/e ${r.week_ending}: submitted ${r.submitted_on}, cutoff ${cutoff}, late=${r.late ?? "unset"}`);
+      if (examples.length < 3) examples.push(`${r.name} w/e ${r.week_ending}, submitted ${r.at.slice(0, 10)}: ${problem}`);
     }
   }
   return { count, examples };

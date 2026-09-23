@@ -486,9 +486,18 @@ const STRAGGLERS: { userKey: string; scenario: Scenario }[] = [
 // overdue; someone else in each entity has this week submitted and
 // waiting on the manager.
 // Each with the manager's own note: two managers, two different weeks,
-// two different reasons.
-const RETURNED_OPEN = [
-  { userKey: "bob", weeksAgo: 1, reason: "Wednesday's hours look doubled against the client log — please check and resubmit." },
+// two different reasons. Both were first filed on time. Bob's was
+// returned two days before the reset, so it is always inside its return
+// window: resubmitting needs no late reason (lib/domain.ts's windowOf).
+// Jason's was returned the day after he filed it, as before, so on most
+// reset days its window has passed and resubmitting it is late.
+const RETURNED_OPEN: { userKey: string; weeksAgo: number; reason: string; returnedDaysBeforeToday?: number }[] = [
+  {
+    userKey: "bob",
+    weeksAgo: 1,
+    reason: "Wednesday's hours look doubled against the client log — please check and resubmit.",
+    returnedDaysBeforeToday: 2,
+  },
   { userKey: "jason", weeksAgo: 1, reason: "Thursday's hours don't match the sprint board — please recheck them and resubmit." },
 ];
 const FORCE_SUBMITTED = [
@@ -978,14 +987,18 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       if (plan === "returnedOpen") {
         // Sent back and not yet resubmitted: the contributor's own
         // "returned" week, waiting on them.
-        const returnedAt = shiftHours(submittedAt, 24);
+        const spec = RETURNED_OPEN.find((r) => r.userKey === u.key && r.weeksAgo === weeksAgo)!;
+        const returnedAt =
+          spec.returnedDaysBeforeToday === undefined
+            ? shiftHours(submittedAt, 24)
+            : maxDT(shiftHours(submittedAt, 1), atTime(addDays(todayISO, -spec.returnedDaysBeforeToday), 10, 0));
         events.push({
           id: nextEventId(),
           timesheetId,
           type: "returned",
           actorId: managerId,
           at: returnedAt,
-          payload: { reason: RETURNED_OPEN.find((r) => r.userKey === u.key && r.weeksAgo === weeksAgo)!.reason },
+          payload: { reason: spec.reason },
         });
         scenario.returned.push({
           entityKey: u.entityKey, timesheetId, weekEnding, userId, userName: u.name, managerId, payrollAdminId, at: returnedAt,
