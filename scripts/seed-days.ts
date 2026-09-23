@@ -9,7 +9,7 @@
 import { buildSeed, type SeedResult } from "../db/seedData";
 import { addDays, fromUTCDate } from "../lib/dateutil";
 import { windowOf } from "../lib/domain";
-import { calendarSlotForWeek, getUpcomingPayRuns } from "../lib/paycalendar";
+import { businessDayBefore, calendarSlotForWeek, getUpcomingPayRuns, isPayrollBusinessDay } from "../lib/paycalendar";
 import { statusFromLatestEventType } from "../lib/status";
 
 const days = Number(process.argv[2] ?? 420);
@@ -75,6 +75,15 @@ function check(seed: SeedResult, now: Date) {
       const copied = (processed.payload.payRun as { payday: string }).payday;
       if (held !== copied) fail("processed copies the approved run", `timesheet ${t.id}: ${held} vs ${copied}`);
       if (copied >= todayISO) fail("only runs that have paid are processed", `timesheet ${t.id}: ${copied}`);
+      // The handoff happens before the run: the last working day before
+      // its due date, so never on or after payday and never a weekend or
+      // holiday; and after the week was approved.
+      const run = processed.payload.payRun as { payday: string; due: string };
+      const on = processed.at.slice(0, 10);
+      if (on !== businessDayBefore(run.due)) fail("handed off on the last working day before its due date", `timesheet ${t.id}: ${on}, due ${run.due}`);
+      if (on >= run.payday) fail("handed off before payday", `timesheet ${t.id}: ${on} vs payday ${run.payday}`);
+      if (!isPayrollBusinessDay(on)) fail("handed off on a working day", `timesheet ${t.id}: ${on}`);
+      if (new Date(processed.at).getTime() <= new Date(approved!.at).getTime()) fail("approved before handed off", `timesheet ${t.id}`);
     }
     if (status === "approved") {
       const held = (approved!.payload.payRun as { payday: string }).payday;

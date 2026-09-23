@@ -13,7 +13,14 @@ import { addDays, fromUTCDate, mostRecentFriday } from "../lib/dateutil";
 import { rateAsOf as domainRateAsOf, windowOf, type RateRow as DomainRateRow } from "../lib/domain";
 import { roundMoney } from "../lib/format";
 import { federalHolidaysForYears } from "../lib/holidays";
-import { calendarSlotForWeek, getMostRecentPastPayRun, getUpcomingPayRuns, payRunForApproval, type PayRun } from "../lib/paycalendar";
+import {
+  businessDayBefore,
+  calendarSlotForWeek,
+  getMostRecentPastPayRun,
+  getUpcomingPayRuns,
+  payRunForApproval,
+  type PayRun,
+} from "../lib/paycalendar";
 import { payRunRef } from "../lib/payrun";
 
 // ---------------------------------------------------------------------------
@@ -68,9 +75,8 @@ function atTime(dateISO: string, hour: number, minute: number): string {
 }
 
 function shiftHours(dt: string, hours: number): string {
-  const d = new Date(dt);
-  d.setUTCHours(d.getUTCHours() + hours);
-  return d.toISOString();
+  // Milliseconds, not setUTCHours: that truncates a fractional hour.
+  return new Date(new Date(dt).getTime() + hours * 3_600_000).toISOString();
 }
 
 function maxDT(a: string, b: string): string {
@@ -545,12 +551,18 @@ function planScenarios(anchorFriday: string, todayISO: string, lastPaid: PayRun)
   return plan;
 }
 
-// When an entity's admin processed a run: the morning before its payday,
-// NexCore an hour after CoreThread — and the batch reference is derived
-// from that moment exactly as markProcessedBatchCore derives it from the
-// clock (BP- plus base-36 milliseconds). One batch per entity per run.
-function seedProcessedAt(entityKey: string, payday: string): string {
-  return atTime(addDays(payday, -1), entityKey === "corethread" ? 10 : 11, 0);
+// When an entity's admin handed a run off to payroll. Confirming a batch
+// in Mark processed produces the file payroll keys the run from, so the
+// handoff comes BEFORE the run: on the last working day before the run's
+// due date (payday − 2) — never a weekend or a federal holiday, never on
+// or after payday — in the afternoon, NexCore an hour after CoreThread.
+// Not two working days before: for about four runs in ten that falls
+// before the cutoff Friday, i.e. before the run's last week is even
+// filed. One batch per entity per run; the batch reference is derived
+// from this moment exactly as markProcessedBatchCore derives it from the
+// clock (BP- plus base-36 milliseconds).
+function seedProcessedAt(entityKey: string, run: PayRun): string {
+  return atTime(businessDayBefore(run.due), entityKey === "corethread" ? 15 : 16, 0);
 }
 
 function seedBatchRef(processedAt: string): string {
@@ -909,6 +921,13 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         capsContractRef: capTerms.find((c) => c.userId === userId)!.contractRef,
       };
 
+      // A week held in a run that has already paid was handed off to
+      // payroll before that run — so it was filed and approved before the
+      // handoff, too. The stragglers are approved after their slot's due
+      // date and wait in the next run instead, so they have no handoff.
+      const straggler = plan === "lateStraggler" || plan === "approvedLate";
+      const handoffAt = !straggler && slot.payday < todayISO ? seedProcessedAt(u.entityKey, slot) : null;
+
       // submission — on time (by the slot's cutoff) unless this is the
       // late-submission scenario, which is filed after it, flagged late
       // and says why: exactly what submitCore demands of a late week.
@@ -918,12 +937,14 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         submittedPayload.late = true;
         submittedPayload.reason = "Out sick most of the week; submitted after catching up on hours.";
       } else if (plan === "trail") {
-        // Submitted, returned and resubmitted on the Friday itself, so
-        // the resubmission is still inside the week's window too.
-        submittedAt = atTime(weekEnding, 9, 30);
+        // Submitted, returned and resubmitted on the Friday morning, so the
+        // resubmission is inside the week's window and the approval can
+        // still come before a handoff that afternoon.
+        submittedAt = handoffAt ? minDT(atTime(weekEnding, 8, 30), shiftHours(handoffAt, -6.5)) : atTime(weekEnding, 8, 30);
       } else {
         const candidate = shiftHours(atTime(weekEnding, 17, 0), randInt(rng, 0, 2) * 24);
         submittedAt = minDT(minDT(candidate, atTime(slot.cutoff, 20, 0)), atTime(yesterdayISO, 18, 0));
+        if (handoffAt) submittedAt = minDT(submittedAt, shiftHours(handoffAt, -4));
       }
       events.push({ id: nextEventId(), timesheetId, type: "submitted", actorId: userId, at: submittedAt, payload: submittedPayload });
       if (plan === "lateStraggler") scenario.ashleyLate = { timesheetId, weekEnding, submittedAt };
@@ -931,7 +952,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       let lastSubmitAt = submittedAt;
 
       if (plan === "trail") {
-        const returnedAt = atTime(weekEnding, 13, 0);
+        const returnedAt = shiftHours(submittedAt, 1.75);
         events.push({
           id: nextEventId(),
           timesheetId,
@@ -940,7 +961,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
           at: returnedAt,
           payload: { reason: "Hours didn't reconcile with the sprint burn-down — please re-check Thursday before resubmitting." },
         });
-        const resubmittedAt = atTime(weekEnding, 16, 45);
+        const resubmittedAt = shiftHours(submittedAt, 4);
         events.push({
           id: nextEventId(),
           timesheetId,
@@ -987,6 +1008,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         approvedAt = maxDT(shiftHours(lastSubmitAt, 24), atTime(addDays(lastPaid.due, 1), 10, 0));
       } else {
         approvedAt = minDT(minDT(shiftHours(lastSubmitAt, 24), atTime(slot.due, 21, 0)), latestAt);
+        if (handoffAt) approvedAt = minDT(approvedAt, shiftHours(handoffAt, -1));
       }
       if (new Date(approvedAt).getTime() <= new Date(lastSubmitAt).getTime()) {
         // Too recent to have been approved yet (filed yesterday evening):
@@ -1046,7 +1068,12 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       const override = ACCOUNT_OVERRIDE.find((o) => o.userKey === u.key && o.weeksAgo === weeksAgo);
       const expenseAccount = override && override.account !== resolvedAccount ? override.account : resolvedAccount;
       const amount = roundMoney(roundedTotal * rate.hourly);
-      const processedAt = seedProcessedAt(u.entityKey, heldRun.payday);
+      // Approved by the slot's due date, so the approval rule held it in its
+      // own slot — the run whose handoff moment was computed above.
+      if (heldRun.payday !== slot.payday || !handoffAt) {
+        throw new Error(`seed: ${u.key} week ${weeksAgo} held in ${heldRun.payday}, processed as slot ${slot.payday}`);
+      }
+      const processedAt = handoffAt;
       events.push({
         id: nextEventId(),
         timesheetId,

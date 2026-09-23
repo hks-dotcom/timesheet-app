@@ -47,6 +47,18 @@ function precedingBusinessDay(iso: string, holidays: Set<string>): string {
   return date;
 }
 
+// A working day by the pay calendar's own definition: not a weekend, not
+// a federal holiday.
+export function isPayrollBusinessDay(iso: string): boolean {
+  return isBusinessDay(iso, holidaySetAround(Number(iso.slice(0, 4))));
+}
+
+// The last working day strictly before `iso`.
+export function businessDayBefore(iso: string): string {
+  const holidays = holidaySetAround(Number(iso.slice(0, 4)));
+  return precedingBusinessDay(addDays(iso, -1), holidays);
+}
+
 // The Friday on or before `iso`. Never shifted for holidays.
 function fridayOnOrBefore(iso: string): string {
   const dow = dayOfWeek(iso);
