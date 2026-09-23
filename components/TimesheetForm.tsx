@@ -41,6 +41,18 @@ export function TimesheetForm(props: TimesheetFormProps) {
   const [streamId, setStreamId] = useState(props.initialStreamId);
   const [customerId, setCustomerId] = useState(props.initialCustomerId);
   const [hours, setHours] = useState<Hours>(props.initialHours);
+  // What each hour box shows. Loaded values are displayed to two decimals
+  // (6.5 -> "6.50"); after that it is exactly what was typed. Display
+  // only: `hours` above stays the number every check and total uses, and
+  // the posted string parses to the same number either way, so nothing
+  // stored or submitted changes.
+  const [hourText, setHourText] = useState<Record<DayKey, string>>(() => {
+    const out = {} as Record<DayKey, string>;
+    for (const day of DAY_KEYS) {
+      out[day] = props.initialHours[day] ? formatHours(props.initialHours[day]) : "";
+    }
+    return out;
+  });
   const [notes, setNotes] = useState(props.initialNotes);
   const [lateReason, setLateReason] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -54,6 +66,7 @@ export function TimesheetForm(props: TimesheetFormProps) {
   const over = total > props.weeklyCap;
 
   function setHour(day: DayKey, value: string) {
+    setHourText((t) => ({ ...t, [day]: value }));
     const n = Number(value);
     setHours((h) => ({ ...h, [day]: Number.isFinite(n) ? n : 0 }));
     setClientError(null); // the old message may no longer describe the current values
@@ -177,7 +190,7 @@ export function TimesheetForm(props: TimesheetFormProps) {
                       step={0.25}
                       name={`hours_${day}`}
                       form="timesheet-form"
-                      value={hours[day] || ""}
+                      value={hourText[day] ?? ""}
                       placeholder="0"
                       disabled={!props.editable}
                       onChange={(e) => setHour(day, e.target.value)}
