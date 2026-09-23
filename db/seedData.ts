@@ -13,7 +13,8 @@ import { addDays, fromUTCDate, mostRecentFriday } from "../lib/dateutil";
 import { rateAsOf as domainRateAsOf, windowOf, type RateRow as DomainRateRow } from "../lib/domain";
 import { roundMoney } from "../lib/format";
 import { federalHolidaysForYears } from "../lib/holidays";
-import { getMostRecentPastPayRun, getPayRunForWeekEnding, type PayRun } from "../lib/paycalendar";
+import { calendarSlotForWeek, getMostRecentPastPayRun, getUpcomingPayRuns, payRunForApproval, type PayRun } from "../lib/paycalendar";
+import { payRunRef } from "../lib/payrun";
 
 // ---------------------------------------------------------------------------
 // deterministic PRNG (mulberry32) — fixed seed so two runs are identical.
@@ -396,43 +397,6 @@ const ROSTER: RosterUser[] = [
 // override" pill in Reports is visible from a fresh reset. Identified by
 // person and by how many weeks before the anchor the week ends, so the
 // same week is picked on every rebuild.
-// One person per entity left with a week the Tracker calls Overdue, so
-// the Tracker's Overdue pill and the admin dashboard's "Staff overdue"
-// tile both show something from a fresh reset. Neither is a showcase
-// person for anything else: Ashley Davis's other scenario is the late
-// submission (a different week), and Jason Walker's is the
-// segregation-of-duties case (week 6), both untouched by this.
-const OVERDUE_STAFF = ["ashley", "jason"];
-
-// Which week that is, derived — never a fixed date. Overdue in the
-// Tracker means a week inside the contributor's four-week window that
-// is missing or still a draft and is already past its own cutoff, i.e.
-// windowOf().state is no longer "open". This picks the NEWEST such
-// week, so it is the most actionable one ("late" where the calendar
-// offers one, otherwise "locked"), using the very same windowOf the
-// Tracker uses rather than a second opinion about what overdue means.
-//
-// Chosen PER PERSON, skipping any week that person's other scenarios
-// already own. Picking one week for everybody looked fine on one
-// anchor and silently produced no overdue CoreThread person on
-// another: the chosen week landed on Ashley Davis's late-submission
-// week, that scenario won, and the tile went back to zero. Which of
-// weeks 1-3 is past its cutoff moves with the anchor, so the collision
-// has to be resolved per person, not assumed away.
-function overdueWeeksAgoFor(userKey: string, anchorFriday: string, todayISO: string): number | null {
-  for (let w = 1; w <= 3; w++) {
-    const taken =
-      RETURNED_RESUBMITTED_WEEKS.some((x) => x.userKey === userKey && x.weeksAgo === w) ||
-      (OVERRIDE_APPROVED.userKey === userKey && OVERRIDE_APPROVED.weeksAgo === w) ||
-      (LATE_SUBMISSION.userKey === userKey && LATE_SUBMISSION.weeksAgo === w) ||
-      ACCOUNT_OVERRIDE.some((o) => o.userKey === userKey && o.weeksAgo === w);
-    if (taken) continue;
-    const state = windowOf(addDays(anchorFriday, -7 * w), todayISO).state;
-    if (state === "late" || state === "locked") return w;
-  }
-  return null;
-}
-
 const ACCOUNT_OVERRIDE: { userKey: string; weeksAgo: number; account: string; reason: string }[] = [
   {
     userKey: "daniel",
@@ -465,43 +429,133 @@ const ACCOUNT_OVERRIDE: { userKey: string; weeksAgo: number; account: string; re
 // visible the moment the anchor moves past it.
 // ---------------------------------------------------------------------
 
-// One Mark processed batch per entity per pay run, the way an admin
-// actually works a run. Same shape as markProcessedBatchCore's
-// references (BP- plus a base-36 millisecond timestamp), derived from the
-// payday and the entity so a rebuild gives every batch the same
-// reference, and the two entities never share one.
-function seedBatchRef(entityKey: string, payday: string): string {
-  const entityOffsetMs = entityKey === "corethread" ? 0 : 3_600_000;
-  return `BP-${(Date.parse(`${payday}T10:00:00.000Z`) + entityOffsetMs).toString(36).toUpperCase()}`;
-}
-
 const PAYROLL_ADMIN_BY_ENTITY: Record<string, string> = {
   corethread: "adam",
   nexcore: "kevin",
 };
 
-// Deliberate scenarios named in the review. Each names the exact
-// (user, weeksAgo) pair it applies to.
-// Weeks that were submitted, returned with a note, then resubmitted.
-// Two of them, deliberately:
-//   - Bob at 3 weeks back is the recent, visible one.
-//   - Ashley at 20 weeks back is old enough that its pay run is always
-//     long past, so it is always PROCESSED. Guided entry 2 ("One
-//     timesheet, every step") needs a timesheet that reached the end of
-//     the line while still carrying its return, and the recent one
-//     cannot promise that: a week belonging to the most recent past pay
-//     run stays approved until payroll confirms it. db/seed.ts checks
-//     at least one processed timesheet has both.
-const RETURNED_RESUBMITTED_WEEKS = [
-  { userKey: "bob", weeksAgo: 3 },
-  // One old-enough-to-always-be-processed case per ENTITY: guided
-  // entry 2 resolves within whichever entity the visitor picked, so a
-  // single CoreThread example would leave NexCore without one.
-  { userKey: "ashley", weeksAgo: 20 },
-  { userKey: "sunita", weeksAgo: 20 },
+// ---------------------------------------------------------------------
+// Scenarios. Each is a (person, weeks-before-the-anchor) pair with a
+// fixed story; everything else follows the calendar. Some are fixed
+// weeks, some are derived from today, and they are placed in priority
+// order so a derived one never lands on a week another already owns —
+// which of the last few weeks is past its cutoff, or belongs to the run
+// that just paid, moves with the anchor, so collisions are resolved per
+// reset, not assumed away.
+// ---------------------------------------------------------------------
+
+type Scenario =
+  | "sod" // payroll override-approved AND processed it: the segregation-of-duties case
+  | "trail" // submitted, returned, resubmitted, approved, processed: guided entry "One timesheet, every step"
+  | "lateStraggler" // submitted after its cutoff (flagged, with a reason), approved after its run's due date
+  | "approvedLate" // submitted on time, approved after its run's due date
+  | "returnedOpen" // returned and not yet resubmitted: waiting on the contributor
+  | "overdue" // still a draft past its cutoff: the Tracker's Overdue pill
+  | "forceSubmitted" // submitted, waiting on the manager
+  | "forceDraft"; // this week, not started
+
+// Fixed weeks. Old enough that their run has always paid, so each is
+// always processed. One "trail" week per ENTITY: the guided entry
+// resolves within whichever entity the visitor picked.
+const FIXED_SCENARIOS: { userKey: string; weeksAgo: number; scenario: Scenario }[] = [
+  { userKey: "jason", weeksAgo: 6, scenario: "sod" },
+  { userKey: "ashley", weeksAgo: 20, scenario: "trail" },
+  { userKey: "sunita", weeksAgo: 20, scenario: "trail" },
 ];
-const OVERRIDE_APPROVED = { userKey: "jason", weeksAgo: 6 };
-const LATE_SUBMISSION = { userKey: "ashley", weeksAgo: 2 };
+
+// The stragglers: the last week of the run that has just paid, approved
+// the day after that run's due date. The approval rule puts each into
+// the NEXT run, so the ready batch always has something in it the day
+// after a payday, and shows the rule doing its job: Ashley Davis's was
+// also filed late, Daniel Scott's and Sunita Green's were filed on time
+// and approved late.
+const STRAGGLERS: { userKey: string; scenario: Scenario }[] = [
+  { userKey: "ashley", scenario: "lateStraggler" },
+  { userKey: "daniel", scenario: "approvedLate" },
+  { userKey: "sunita", scenario: "approvedLate" },
+];
+
+// The gate's contributor in each entity (Bob Ellis, Jason Walker) has a
+// week sent back to them last week, and the week after it untouched or
+// overdue; someone else in each entity has this week submitted and
+// waiting on the manager.
+const RETURNED_OPEN = [
+  { userKey: "bob", weeksAgo: 1 },
+  { userKey: "jason", weeksAgo: 1 },
+];
+const FORCE_SUBMITTED = [
+  { userKey: "tara", weeksAgo: 0 },
+  { userKey: "jason", weeksAgo: 0 },
+  { userKey: "sunita", weeksAgo: 0 }, // skipped on the days her straggler week is this week
+];
+const FORCE_DRAFT = [{ userKey: "bob", weeksAgo: 0 }];
+
+// One person per entity left with a week the Tracker calls Overdue, so
+// the Tracker's Overdue pill and the admin dashboard's "Staff overdue"
+// tile both show something from a fresh reset. Overdue means a week
+// inside the four-week window that is missing or still a draft and
+// already past its own cutoff — windowOf().state no longer "open" — so
+// this picks the NEWEST such week not already taken, using the very same
+// windowOf the Tracker uses. A fallback person per entity: on a Friday
+// just after a run's cutoff, the only past-cutoff week in someone's
+// window can be the one their straggler scenario already owns.
+const OVERDUE_STAFF: string[][] = [
+  ["ashley", "tara"],
+  ["jason", "sunita"],
+];
+
+function planScenarios(anchorFriday: string, todayISO: string, lastPaid: PayRun): Map<string, Map<number, Scenario>> {
+  const plan = new Map<string, Map<number, Scenario>>();
+  const place = (userKey: string, weeksAgo: number, scenario: Scenario) => {
+    const mine = plan.get(userKey) ?? new Map<number, Scenario>();
+    const taken = mine.get(weeksAgo);
+    if (taken) throw new Error(`seed: ${userKey} week ${weeksAgo} is both ${taken} and ${scenario}`);
+    mine.set(weeksAgo, scenario);
+    plan.set(userKey, mine);
+  };
+  const isTaken = (userKey: string, weeksAgo: number) =>
+    plan.get(userKey)?.has(weeksAgo) === true || ACCOUNT_OVERRIDE.some((o) => o.userKey === userKey && o.weeksAgo === weeksAgo);
+
+  for (const f of FIXED_SCENARIOS) place(f.userKey, f.weeksAgo, f.scenario);
+
+  // The last paid run's own last week: the one whose Friday IS that run's
+  // cutoff. Always on or before the anchor (the cutoff is a Friday before
+  // a payday that has passed).
+  const stragglerWeeksAgo = Math.round((Date.parse(anchorFriday) - Date.parse(lastPaid.cutoff)) / (7 * 86_400_000));
+  for (const s of STRAGGLERS) place(s.userKey, stragglerWeeksAgo, s.scenario);
+
+  for (const r of RETURNED_OPEN) place(r.userKey, r.weeksAgo, "returnedOpen");
+  for (const f of FORCE_SUBMITTED) if (!isTaken(f.userKey, f.weeksAgo)) place(f.userKey, f.weeksAgo, "forceSubmitted");
+  for (const f of FORCE_DRAFT) if (!isTaken(f.userKey, f.weeksAgo)) place(f.userKey, f.weeksAgo, "forceDraft");
+
+  for (const candidates of OVERDUE_STAFF) {
+    let placed = false;
+    for (const userKey of candidates) {
+      for (let w = 1; w <= 3 && !placed; w++) {
+        if (isTaken(userKey, w)) continue;
+        const state = windowOf(addDays(anchorFriday, -7 * w), todayISO).state;
+        if (state === "late" || state === "locked") {
+          place(userKey, w, "overdue");
+          placed = true;
+        }
+      }
+      if (placed) break;
+    }
+  }
+  return plan;
+}
+
+// When an entity's admin processed a run: the morning before its payday,
+// NexCore an hour after CoreThread — and the batch reference is derived
+// from that moment exactly as markProcessedBatchCore derives it from the
+// clock (BP- plus base-36 milliseconds). One batch per entity per run.
+function seedProcessedAt(entityKey: string, payday: string): string {
+  return atTime(addDays(payday, -1), entityKey === "corethread" ? 10 : 11, 0);
+}
+
+function seedBatchRef(processedAt: string): string {
+  return `BP-${Date.parse(processedAt).toString(36).toUpperCase()}`;
+}
 
 const TIME_OFF_PLAN: { userKey: string; weeksAgo: number; dayOffset: number; label: string }[] = [
   { userKey: "daniel", weeksAgo: 33, dayOffset: -3, label: "Vacation" },
@@ -675,13 +729,22 @@ export function buildSeed(now: Date = new Date()): SeedResult {
   }
 
   const todayISO = fromUTCDate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())));
-  // The most recently paid run: its weeks stay approved, not processed,
-  // until payroll confirms it. Computed once, up front, so it's the same
-  // pay run for every person regardless of where they fall in the roster.
-  const mostRecentPastPayRun = getMostRecentPastPayRun(todayISO);
-  // The week each of the OVERDUE_STAFF is left sitting on, derived
-  // from this run's anchor and today, so it moves with them.
-  const overdueWeekByUser = new Map(OVERDUE_STAFF.map((k) => [k, overdueWeeksAgoFor(k, anchor, todayISO)]));
+  const yesterdayISO = addDays(todayISO, -1);
+  // Nothing in the seed happens today: every timestamp is on or before
+  // yesterday, so no reset, at any hour, can write an event dated after
+  // the moment it runs. buildSeed asserts this over every table at the
+  // end rather than trusting each formula below.
+  const latestAt = atTime(yesterdayISO, 21, 0);
+
+  // The two runs everything hangs off, both derived from today:
+  //   lastPaid — the latest run whose payday is already behind us. Every
+  //     week held in it or earlier has been processed.
+  //   nextRun  — the first run whose payday is today or later: what the
+  //     payroll admin processes next. Weeks held in it are approved and
+  //     waiting — the ready batch.
+  const lastPaid = getMostRecentPastPayRun(yesterdayISO);
+  const nextRun = getUpcomingPayRuns(todayISO, 1)[0];
+  const scenarioPlan = planScenarios(anchor, todayISO, lastPaid);
 
   const nextTimesheetId = makeIdGen();
   const nextEventId = makeIdGen();
@@ -693,22 +756,9 @@ export function buildSeed(now: Date = new Date()): SeedResult {
   const chases: ChaseRow[] = [];
   const adminLog: AdminLogRow[] = [];
 
-  // Captured while walking the roster below, used to build the (at most 5)
+  // Captured while walking the roster below, used to build the
   // notifications afterwards — each one needs a real timesheet id and a
   // real timestamp from the specific scenario it describes.
-  const scenario: {
-    bob?: { timesheetId: number; weekEnding: string; returnedAt: string; resubmittedAt: string };
-    ashley?: { timesheetId: number; weekEnding: string; submittedAt: string };
-    jason?: { timesheetId: number; weekEnding: string; approvedAt: string };
-  } = {};
-
-  // One still-submitted and one still-approved week per entity, captured
-  // as the roster is walked, so the showcase notifications below can
-  // point at a real event of the right kind for each role: the manager
-  // hears about something actually waiting on them, the payroll admin
-  // about something actually ready to process, the contributor about
-  // their own week. Nothing is invented — every notification names an
-  // event that exists.
   interface ShowcaseWeek {
     timesheetId: number;
     weekEnding: string;
@@ -718,6 +768,17 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     payrollAdminId: number;
     at: string;
   }
+  const scenario: {
+    returned: (ShowcaseWeek & { entityKey: string })[];
+    ashleyLate?: { timesheetId: number; weekEnding: string; submittedAt: string };
+    jason?: { timesheetId: number; weekEnding: string; approvedAt: string };
+  } = { returned: [] };
+
+  // One still-submitted and one approved-and-ready week per entity, so the
+  // showcase notifications below point at a real event of the right kind
+  // for each role: the manager hears about something actually waiting on
+  // them, the payroll admin about something actually ready to process,
+  // the contributor about their own week. Nothing is invented.
   const showcase: Record<string, { submitted?: ShowcaseWeek; approved?: ShowcaseWeek }> = {};
 
   for (const u of ROSTER) {
@@ -734,15 +795,14 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     for (let weeksAgo = u.hireWeeksAgo; weeksAgo >= startWeeksAgo; weeksAgo--) {
       const weekEnding = addDays(anchor, -7 * weeksAgo);
       const weekMonday = addDays(weekEnding, -4);
-      const payRun: PayRun = getPayRunForWeekEnding(weekEnding);
+      // The week's calendar slot: its cutoff decides on time vs late.
+      // Which run it is PAID in is decided below, at approval.
+      const slot: PayRun = calendarSlotForWeek(weekEnding);
       const rate = rateAsOf(u.key, weekEnding);
-
-      const isReturned = RETURNED_RESUBMITTED_WEEKS.some((x) => x.userKey === u.key && x.weeksAgo === weeksAgo);
-      const isOverride = OVERRIDE_APPROVED.userKey === u.key && OVERRIDE_APPROVED.weeksAgo === weeksAgo;
-      const isLate = LATE_SUBMISSION.userKey === u.key && LATE_SUBMISSION.weeksAgo === weeksAgo;
+      const plan = scenarioPlan.get(u.key)?.get(weeksAgo) ?? null;
 
       // stream / customer for this week
-      const useInternal = !isReturned && !isOverride && !isLate && homeStream.id !== internalStream.id && chance(rng, 0.12);
+      const useInternal = plan === null && homeStream.id !== internalStream.id && chance(rng, 0.12);
       const stream = useInternal ? internalStream : homeStream;
       let customer: CustomerRow | null = null;
       if (stream.customerRule === "required") {
@@ -771,13 +831,12 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       // cap. Rounding alone can push a day up by as much as 0.125h, and
       // summed across 5 independently-rounded days that can push the
       // weekly total back over the cap even when every pre-rounding value
-      // was comfortably under it (this is what produced the 3 snapshotted
-      // caps the live seed's verification query caught — Tara Young's
-      // weekly cap of 24 equals dailyCap(6) * 5 * 0.8 exactly, the average
-      // unrounded total, so she hit this every time rounding rounded up
-      // more days than it rounded down). So after rounding we deterministically
-      // trim any remaining excess back off, 0.25h at a time, from whichever
-      // day currently holds the most hours — the actual enforcement step.
+      // was comfortably under it (Tara Young's weekly cap of 24 equals
+      // dailyCap(6) * 5 * 0.8 exactly, the average unrounded total, so she
+      // hit this every time rounding rounded up more days than it rounded
+      // down). So after rounding we deterministically trim any remaining
+      // excess back off, 0.25h at a time, from whichever day currently
+      // holds the most hours — the actual enforcement step.
       const hours: Record<string, number> = {};
       dayKeys.forEach((k, i) => {
         const rounded = Math.round(rawHours[i] * 4) / 4;
@@ -796,31 +855,23 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         roundedTotal = Math.round((roundedTotal - 0.25) * 100) / 100;
       }
 
-      // status bucket
-      let bucket: "draft" | "submitted" | "approved" | "processed";
-      if (payRun.payday === mostRecentPastPayRun.payday) {
-        // Payroll hasn't confirmed the most recently paid run yet — every
-        // week that belongs to it stays approved, never processed, with
-        // no exceptions (including the deliberate scenarios below: their
-        // narrative still runs up through the approved event, it just
-        // doesn't get a processed event yet either).
-        bucket = "approved";
-      } else if (isReturned || isOverride || isLate) {
-        bucket = "processed";
-      } else if (todayISO >= payRun.payday) {
-        bucket = "processed";
-      } else if (todayISO >= payRun.due) {
-        bucket = chance(rng, 0.6) ? "approved" : "submitted";
+      // How far this week goes. A week held in a run that has already
+      // paid is processed; one held in the next run is approved and
+      // waiting; the rest is submitted or still a draft. Scenarios decide
+      // for themselves; everything else follows from its calendar slot.
+      let target: "draft" | "submitted" | "approved";
+      if (plan === "overdue" || plan === "forceDraft") target = "draft";
+      else if (plan === "forceSubmitted") target = "submitted";
+      else if (plan === "returnedOpen") target = "draft"; // submitted, then returned — see below
+      else if (plan !== null) target = "approved";
+      else if (slot.payday < todayISO) target = "approved";
+      else if (slot.payday === nextRun.payday) {
+        if (todayISO > slot.due) target = chance(rng, 0.8) ? "approved" : "submitted";
+        else if (weeksAgo === 0 && chance(rng, 0.35)) target = "draft";
+        else target = chance(rng, 0.5) ? "approved" : "submitted";
       } else {
-        bucket = chance(rng, 0.5) ? "draft" : "submitted";
+        target = chance(rng, 0.4) ? "draft" : "submitted";
       }
-
-      // …except for the one week per entity deliberately left
-      // overdue. Forced last so it wins over whatever the rules above
-      // chose, and only when this week is not already carrying one of
-      // the other scenarios.
-      const isOverdue = overdueWeekByUser.get(u.key) === weeksAgo && weeksAgo > 0;
-      if (isOverdue) bucket = "draft";
 
       const timesheetId = nextTimesheetId();
       timesheets.push({
@@ -836,26 +887,16 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       const createdAt = atTime(weekMonday, 9, 0);
       events.push({ id: nextEventId(), timesheetId, type: "created", actorId: userId, at: createdAt, payload: {} });
 
-      if (bucket === "draft") {
+      if (target === "draft" && plan !== "returnedOpen") {
         if (chance(rng, 0.5)) {
           chases.push({
             id: nextChaseId(),
-            at: shiftHours(atTime(todayISO, 9, 0), -randInt(rng, 0, 48)),
+            at: shiftHours(atTime(yesterdayISO, 15, 0), -randInt(rng, 0, 48)),
             byUserId: managerId,
             targetUserId: userId,
           });
         }
         continue;
-      }
-
-      // submission
-      let submittedAt: string;
-      if (isLate) {
-        submittedAt = atTime(addDays(payRun.due, 1), 11, 0);
-      } else {
-        const candidate = shiftHours(atTime(weekEnding, 17, 0), randInt(rng, 0, 2) * 24);
-        const cappedByDue = minDT(candidate, atTime(payRun.due, 23, 0));
-        submittedAt = minDT(cappedByDue, atTime(todayISO, 23, 0));
       }
 
       const submittedPayload: Record<string, unknown> = {
@@ -867,21 +908,30 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         dailyCap: u.dailyCap,
         capsContractRef: capTerms.find((c) => c.userId === userId)!.contractRef,
       };
-      if (isLate) {
+
+      // submission — on time (by the slot's cutoff) unless this is the
+      // late-submission scenario, which is filed after it, flagged late
+      // and says why: exactly what submitCore demands of a late week.
+      let submittedAt: string;
+      if (plan === "lateStraggler") {
+        submittedAt = atTime(addDays(slot.cutoff, 1), 11, 0);
         submittedPayload.late = true;
         submittedPayload.reason = "Out sick most of the week; submitted after catching up on hours.";
+      } else if (plan === "trail") {
+        // Submitted, returned and resubmitted on the Friday itself, so
+        // the resubmission is still inside the week's window too.
+        submittedAt = atTime(weekEnding, 9, 30);
+      } else {
+        const candidate = shiftHours(atTime(weekEnding, 17, 0), randInt(rng, 0, 2) * 24);
+        submittedAt = minDT(minDT(candidate, atTime(slot.cutoff, 20, 0)), atTime(yesterdayISO, 18, 0));
       }
-
       events.push({ id: nextEventId(), timesheetId, type: "submitted", actorId: userId, at: submittedAt, payload: submittedPayload });
-
-      if (isLate) {
-        scenario.ashley = { timesheetId, weekEnding, submittedAt };
-      }
+      if (plan === "lateStraggler") scenario.ashleyLate = { timesheetId, weekEnding, submittedAt };
 
       let lastSubmitAt = submittedAt;
 
-      if (isReturned) {
-        const returnedAt = shiftHours(submittedAt, 24);
+      if (plan === "trail") {
+        const returnedAt = atTime(weekEnding, 13, 0);
         events.push({
           id: nextEventId(),
           timesheetId,
@@ -890,7 +940,7 @@ export function buildSeed(now: Date = new Date()): SeedResult {
           at: returnedAt,
           payload: { reason: "Hours didn't reconcile with the sprint burn-down — please re-check Thursday before resubmitting." },
         });
-        const resubmittedAt = shiftHours(returnedAt, 24);
+        const resubmittedAt = atTime(weekEnding, 16, 45);
         events.push({
           id: nextEventId(),
           timesheetId,
@@ -900,25 +950,63 @@ export function buildSeed(now: Date = new Date()): SeedResult {
           payload: { ...submittedPayload, resubmission: true },
         });
         lastSubmitAt = resubmittedAt;
-        scenario.bob = { timesheetId, weekEnding, returnedAt, resubmittedAt };
       }
 
-      if (bucket === "submitted") {
-        const slot = (showcase[u.entityKey] ??= {});
-        slot.submitted = {
-          timesheetId, weekEnding, userId, userName: u.name, managerId,
-          payrollAdminId, at: lastSubmitAt,
-        };
+      if (plan === "returnedOpen") {
+        // Sent back and not yet resubmitted: the contributor's own
+        // "returned" week, waiting on them.
+        const returnedAt = shiftHours(submittedAt, 24);
+        events.push({
+          id: nextEventId(),
+          timesheetId,
+          type: "returned",
+          actorId: managerId,
+          at: returnedAt,
+          payload: { reason: "Wednesday's hours look doubled against the client log — please check and resubmit." },
+        });
+        scenario.returned.push({
+          entityKey: u.entityKey, timesheetId, weekEnding, userId, userName: u.name, managerId, payrollAdminId, at: returnedAt,
+        });
         continue;
       }
 
-      // approval
+      if (target === "submitted") {
+        if (plan === "forceSubmitted") {
+          const slotShow = (showcase[u.entityKey] ??= {});
+          slotShow.submitted = { timesheetId, weekEnding, userId, userName: u.name, managerId, payrollAdminId, at: lastSubmitAt };
+        }
+        continue;
+      }
+
+      // approval — the moment the pay run is decided. On time means by the
+      // slot's due date; the stragglers are approved the day after the last
+      // paid run's due date, so the approval rule carries them into the
+      // next run, exactly as it would in the app.
+      let approvedAt: string;
+      if (plan === "lateStraggler" || plan === "approvedLate") {
+        approvedAt = maxDT(shiftHours(lastSubmitAt, 24), atTime(addDays(lastPaid.due, 1), 10, 0));
+      } else {
+        approvedAt = minDT(minDT(shiftHours(lastSubmitAt, 24), atTime(slot.due, 21, 0)), latestAt);
+      }
+      if (new Date(approvedAt).getTime() <= new Date(lastSubmitAt).getTime()) {
+        // Too recent to have been approved yet (filed yesterday evening):
+        // it is still waiting on the manager.
+        if (plan !== null) throw new Error(`seed: ${u.key} week ${weeksAgo} (${plan}) has no room to be approved`);
+        continue;
+      }
+      const heldRun = payRunForApproval(weekEnding, approvedAt.slice(0, 10));
+      if ((plan === "lateStraggler" || plan === "approvedLate") && heldRun.payday !== nextRun.payday) {
+        throw new Error(`seed: straggler ${u.key} week ${weeksAgo} held in ${heldRun.payday}, expected ${nextRun.payday}`);
+      }
+
+      const isOverride = plan === "sod";
       const approverId = isOverride ? payrollAdminId : managerId;
-      const approvedAt = maxDT(shiftHours(lastSubmitAt, 24), atTime(payRun.due, 12, 0));
       const approvedPayload: Record<string, unknown> = {
         hourly: rate.hourly,
         rateEffectiveFrom: rate.effectiveFrom,
         contractRef: rate.contractRef,
+        payRun: payRunRef(heldRun),
+        batch: `${isOverride ? "OV" : "BA"}-${Date.parse(approvedAt).toString(36).toUpperCase()}`,
       };
       if (isOverride) {
         approvedPayload.override = true;
@@ -937,33 +1025,28 @@ export function buildSeed(now: Date = new Date()): SeedResult {
         scenario.jason = { timesheetId, weekEnding, approvedAt };
       }
 
-      if (bucket === "approved") {
-        const slot = (showcase[u.entityKey] ??= {});
-        // Skip the override-approved week: payroll approved that one
-        // themselves, so "ready for payroll, approved by the manager" is
-        // not what happened there.
-        if (!isOverride) {
-          slot.approved = {
-            timesheetId, weekEnding, userId, userName: u.name, managerId,
-            payrollAdminId, at: approvedAt,
-          };
+      if (heldRun.payday >= todayISO) {
+        // Held in the next run: approved and waiting for payroll.
+        if (plan === "approvedLate") {
+          const slotShow = (showcase[u.entityKey] ??= {});
+          slotShow.approved = { timesheetId, weekEnding, userId, userName: u.name, managerId, payrollAdminId, at: approvedAt };
         }
         continue;
       }
 
-      // processed — amount comes only from the two snapshots already
-      // taken: the hours on the submitted event and the rate on the
-      // approved event, never recomputed from the live rate table.
-      // expenseAccount is what the admin actually recorded; resolvedAccount
-      // is what the rule said for the inputs at the time. They are the
-      // same except on the ACCOUNT_OVERRIDE weeks, where the admin picked
-      // a different head by hand — exactly what Mark Processed's dropdown
-      // lets them do, and what Reports' "Account override" pill reports.
+      // processed — in the run the approval held, copied from the approved
+      // event, in that run's batch for this entity. The amount comes only
+      // from the two snapshots already taken: the hours on the submitted
+      // event and the rate on the approved event. expenseAccount is what
+      // the admin recorded; resolvedAccount is what the rule said. They
+      // differ only on the ACCOUNT_OVERRIDE weeks, where the admin picked a
+      // different head by hand — what Mark processed's dropdown allows and
+      // Reports' "Account override" pill reports.
       const resolvedAccount = resolveExpenseAccount(stream, u.function);
       const override = ACCOUNT_OVERRIDE.find((o) => o.userKey === u.key && o.weeksAgo === weeksAgo);
       const expenseAccount = override && override.account !== resolvedAccount ? override.account : resolvedAccount;
       const amount = roundMoney(roundedTotal * rate.hourly);
-      const processedAt = maxDT(atTime(payRun.payday, 10, 0), shiftHours(approvedAt, 24));
+      const processedAt = seedProcessedAt(u.entityKey, heldRun.payday);
       events.push({
         id: nextEventId(),
         timesheetId,
@@ -977,9 +1060,9 @@ export function buildSeed(now: Date = new Date()): SeedResult {
           ...(expenseAccount !== resolvedAccount ? { accountOverrideReason: override!.reason } : {}),
           resolvedAccount,
           resolverInputs: { userFunction: u.function, billable: stream.billable, streamDefaultAccount: stream.defaultAccount },
-          payRun: { payday: payRun.payday, due: payRun.due, cutoff: payRun.cutoff },
+          payRun: payRunRef(heldRun),
           amount,
-          batch: seedBatchRef(u.entityKey, payRun.payday),
+          batch: seedBatchRef(processedAt),
         },
       });
     }
@@ -995,37 +1078,29 @@ export function buildSeed(now: Date = new Date()): SeedResult {
     }
   }
 
-  // At most five notifications, each targeting a real timesheet that
-  // belongs to the notified user's own entity — one thread per scenario
-  // rather than one per event.
+  // Scenario notifications, each targeting a real timesheet in the
+  // notified user's own entity — one per scenario rather than one per
+  // event.
   const nextNotificationId = makeIdGen();
   const notifications: NotificationRow[] = [];
-  if (scenario.bob) {
+  for (const r of scenario.returned) {
     notifications.push({
       id: nextNotificationId(),
-      userId: userIdByKey.get("bob")!,
-      at: shiftHours(scenario.bob.returnedAt, 1),
-      readAt: shiftHours(scenario.bob.returnedAt, 6),
-      text: `Your timesheet for week ending ${scenario.bob.weekEnding} was returned.`,
-      target: { timesheetId: scenario.bob.timesheetId, weekEnding: scenario.bob.weekEnding },
-    });
-    notifications.push({
-      id: nextNotificationId(),
-      userId: userIdByKey.get("meera")!,
-      at: shiftHours(scenario.bob.resubmittedAt, 1),
-      readAt: shiftHours(scenario.bob.resubmittedAt, 10),
-      text: `Bob Ellis resubmitted their timesheet for week ending ${scenario.bob.weekEnding}.`,
-      target: { timesheetId: scenario.bob.timesheetId, weekEnding: scenario.bob.weekEnding },
+      userId: r.userId,
+      at: shiftHours(r.at, 1),
+      readAt: null,
+      text: `Your timesheet for week ending ${r.weekEnding} was returned.`,
+      target: { timesheetId: r.timesheetId, weekEnding: r.weekEnding },
     });
   }
-  if (scenario.ashley) {
+  if (scenario.ashleyLate) {
     notifications.push({
       id: nextNotificationId(),
       userId: userIdByKey.get("meera")!,
-      at: shiftHours(scenario.ashley.submittedAt, 1),
-      readAt: shiftHours(scenario.ashley.submittedAt, 14),
-      text: `Ashley Davis submitted a late timesheet for week ending ${scenario.ashley.weekEnding}.`,
-      target: { timesheetId: scenario.ashley.timesheetId, weekEnding: scenario.ashley.weekEnding },
+      at: shiftHours(scenario.ashleyLate.submittedAt, 1),
+      readAt: shiftHours(scenario.ashleyLate.submittedAt, 4),
+      text: `Ashley Davis submitted a late timesheet for week ending ${scenario.ashleyLate.weekEnding}.`,
+      target: { timesheetId: scenario.ashleyLate.timesheetId, weekEnding: scenario.ashleyLate.weekEnding },
     });
   }
   if (scenario.jason) {
@@ -1095,6 +1170,12 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       "future the demo is reset.",
   );
   notes.push(
+    "Pay runs are decided at approval (lib/paycalendar.ts's payRunForApproval) and held on the approved event. " +
+      "Weeks held in a run whose payday has passed are processed, one batch per entity per run; weeks held in " +
+      `the next run (${nextRun.payday}) are approved and waiting. Three stragglers — the last week of the ` +
+      `${lastPaid.payday} run, approved the day after its due date — show the rule carrying them into the next run.`,
+  );
+  notes.push(
     "Per-person 'home stream' isn't specified by the roster, only function/role — I picked one billable-fitting " +
       "stream per CoreThread hourly person (Bob/Nikhil -> T&M, Daniel -> Milestone, Ashley -> Support, " +
       "Tara -> Internal, matching her Sales & Marketing function) and one product stream for each NexCore " +
@@ -1119,6 +1200,20 @@ export function buildSeed(now: Date = new Date()): SeedResult {
       "foreign key is the resolved integer id — db/seed.ts inserts exactly those ids with no RETURNING-based " +
       "linkage.",
   );
+
+  // No reset, on any day at any hour, may write anything dated after the
+  // moment it runs. Checked over every timestamp the seed writes, not
+  // trusted to the formulas above.
+  const nowMs = now.getTime();
+  const stamps: [string, string][] = [
+    ...events.map((e) => [`event ${e.id} (${e.type})`, e.at] as [string, string]),
+    ...notifications.flatMap((n) => [[`notification ${n.id}`, n.at], ...(n.readAt ? [[`notification ${n.id} read`, n.readAt]] : [])] as [string, string][]),
+    ...chases.map((c) => [`chase ${c.id}`, c.at] as [string, string]),
+    ...adminLog.map((a) => [`admin_log ${a.id}`, a.at] as [string, string]),
+  ];
+  for (const [what, at] of stamps) {
+    if (new Date(at).getTime() > nowMs) throw new Error(`seed: ${what} is dated ${at}, after now (${now.toISOString()})`);
+  }
 
   return {
     anchor,
